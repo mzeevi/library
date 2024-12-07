@@ -2,6 +2,7 @@ package data
 
 import (
 	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	"math"
 	"time"
@@ -9,6 +10,9 @@ import (
 
 const (
 	errUnknownCategory = "unknown patron category"
+	errUnableToBorrow  = "unable to borrow book"
+	errUnableToReturn  = "unable to return book"
+	errBookNotOwned    = "book is not borrowed by patron"
 )
 
 const (
@@ -105,9 +109,15 @@ func (p *Patron) UpdatePatron(name *string, categoryType *PatronCategoryType, di
 
 // BorrowBook allows the patron to borrow a book by title from the available list of books.
 // It updates the book's status to borrowed and records the borrowing details for the patron.
-func (p *Patron) BorrowBook(title string, books []Book) {
-	book := getBookByTitle(title, books)
-	book.markBookAsBorrowed()
+func (p *Patron) BorrowBook(title string, books []Book) error {
+	book, err := getBookByTitle(title, books)
+	if err != nil {
+		return fmt.Errorf("%v: %v", errUnableToBorrow, err)
+	}
+
+	if err = book.markBookAsBorrowed(); err != nil {
+		return fmt.Errorf("%v: %v", errUnableToBorrow, errBookAlreadyBorrowed)
+	}
 
 	borrowed := bookDetails{
 		ISBN:           book.ISBN,
@@ -120,15 +130,26 @@ func (p *Patron) BorrowBook(title string, books []Book) {
 	}
 
 	p.BorrowedBooks[title] = borrowed
+
+	return nil
 }
 
 // ReturnBook allows the patron to return a borrowed book by title.
 // It updates the book's status to available and removes the borrowing record for the patron.
-func (p *Patron) ReturnBook(title string, books []Book) {
-	book := getBookByTitle(title, books)
-	book.markBookAsNotBorrowed()
+func (p *Patron) ReturnBook(title string, books []Book) error {
+	book, err := getBookByTitle(title, books)
+	if err != nil {
+		return fmt.Errorf("%v: %v", errUnableToReturn, err)
+	}
 
+	if _, ok := p.BorrowedBooks[title]; !ok {
+		return fmt.Errorf("%v: %v", errUnableToReturn, errBookNotOwned)
+	}
+
+	book.markBookAsNotBorrowed()
 	delete(p.BorrowedBooks, title)
+
+	return nil
 }
 
 // GetBorrowedBooks retrieves a map of the books currently borrowed by the patron and their due dates.
@@ -153,7 +174,7 @@ func (p *Patron) CalcFine(overdueFine float64) float64 {
 		totalFine = totalFine + bookFine
 	}
 
-	return totalFine * p.Category.Discount()
+	return totalFine * (1 - p.Category.Discount())
 }
 
 // daysBetween calculates the number of days between two time.Time values, rounding up the result.

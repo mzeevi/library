@@ -60,7 +60,7 @@ func main() {
 	}
 
 	defer func(transactions data.TransactionsOutput) {
-		err := transactions.CloseWriter()
+		err = transactions.CloseWriter()
 		if err != nil {
 			logger.Error("failed to close writer", "error", err)
 			os.Exit(1)
@@ -77,6 +77,7 @@ func main() {
 	books := generate.Books(10)
 	patrons, err := generate.Patrons(10, app.discounts)
 	if err != nil {
+		logger.Error("failed generate patrons", "errors", err)
 		os.Exit(1)
 	}
 
@@ -85,14 +86,24 @@ func main() {
 		Patrons: patrons,
 	}
 
-	library.Patrons[0].BorrowBook("test-book-1", books)
+	err = library.Patrons[0].BorrowBook("test-book-1", books)
+	if err != nil {
+		logger.Error("failed to borrow book", "error", err)
+		os.Exit(1)
+	}
+
 	err = app.transactions.WriteRecord(createTransactionRecord("borrow", library.Patrons[0].Name, "test-book-1"))
 	if err != nil {
 		logger.Error("failed to record transaction", "error", err)
 		os.Exit(1)
 	}
 
-	library.Patrons[0].ReturnBook("test-book-1", books)
+	err = library.Patrons[0].ReturnBook("test-book-1", books)
+	if err != nil {
+		logger.Error("failed to return book", "error", err)
+		os.Exit(1)
+	}
+
 	err = app.transactions.WriteRecord(createTransactionRecord("return", library.Patrons[0].Name, "test-book-1"))
 	if err != nil {
 		logger.Error("failed to record transaction", "error", err)
@@ -110,7 +121,7 @@ func main() {
 		Publishers: &searchPublisher,
 	})
 
-	slog.Info("All returned books", "searchedBooks", searchBooks)
+	logger.Info("All returned books", "searchedBooks", searchBooks)
 }
 
 // setDiscounts populates the discount fields inside the app struct.

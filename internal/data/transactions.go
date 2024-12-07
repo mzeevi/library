@@ -2,7 +2,6 @@ package data
 
 import (
 	"encoding/csv"
-	"errors"
 	"fmt"
 	"github.com/xuri/excelize/v2"
 	"os"
@@ -11,7 +10,10 @@ import (
 )
 
 const (
-	errCSVWriterNotInitialized = "CSV writer is not initialized"
+	errWriterNotInitialized = "writer is not initialized"
+	errCreatingWriter       = "cannot create writer"
+	errWritingRecord        = "cannot write record"
+	errClosingWriter        = "cannot close writer"
 )
 
 const (
@@ -60,13 +62,13 @@ func addFormatSuffix(filename, format string) string {
 		return fmt.Sprintf("%s.%s", filename, format)
 	}
 
-	return ""
+	return filename
 }
 
 func (c *CSVTransactionOutput) CreateWriter(filename, format string) error {
 	f, err := os.Create(addFormatSuffix(filename, format))
 	if err != nil {
-		return err
+		return fmt.Errorf("%v: %v", errCreatingWriter, err)
 	}
 
 	c.file = f
@@ -78,7 +80,7 @@ func (c *CSVTransactionOutput) CreateWriter(filename, format string) error {
 
 func (c *CSVTransactionOutput) WriteRecord(record []string) error {
 	if c.writer == nil {
-		return errors.New(errCSVWriterNotInitialized)
+		return fmt.Errorf("%v: %v", errWritingRecord, errWriterNotInitialized)
 	}
 
 	c.mutex.Lock()
@@ -95,8 +97,11 @@ func (c *CSVTransactionOutput) CloseWriter() error {
 	}
 
 	if c.file != nil {
-		return c.file.Close()
+		if err := c.file.Close(); err != nil {
+			return fmt.Errorf("%v: %v", errClosingWriter, err)
+		}
 	}
+
 	return nil
 }
 
@@ -105,6 +110,10 @@ func (c *ExcelTransactionOutput) CreateWriter(filename, format string) error {
 
 	normalizedFilename := addFormatSuffix(filename, format)
 	if c.f, err = excelize.OpenFile(normalizedFilename); err != nil {
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("%v: %v", errCreatingWriter, err)
+		}
+
 		c.f = excelize.NewFile()
 	}
 
@@ -127,29 +136,37 @@ func (c *ExcelTransactionOutput) CreateWriter(filename, format string) error {
 }
 
 func (c *ExcelTransactionOutput) WriteRecord(record []string) error {
+	if c.f == nil {
+		return fmt.Errorf("%v: %v", errWritingRecord, errWriterNotInitialized)
+	}
+
 	rows, err := c.f.GetRows(c.sheetName)
 	if err != nil {
-		return err
+		return fmt.Errorf("%v: %v", errWritingRecord, err)
 	}
 	nextRow := len(rows) + 1
 
 	for colIndex, value := range record {
 		cell := fmt.Sprintf("%s%d", string(rune('A'+colIndex)), nextRow)
 		if err = c.f.SetCellValue(c.sheetName, cell, value); err != nil {
-			return err
+			return fmt.Errorf("%v: %v", errWritingRecord, err)
 		}
 	}
 
 	if err = c.f.SaveAs(c.filename); err != nil {
-		return err
+		return fmt.Errorf("%v: %v", errWritingRecord, err)
 	}
 
 	return nil
 }
 
 func (c *ExcelTransactionOutput) CloseWriter() error {
+	if c.f == nil {
+		return fmt.Errorf("%v: %v", errClosingWriter, errWriterNotInitialized)
+	}
+
 	if err := c.f.Close(); err != nil {
-		return err
+		return fmt.Errorf("%v: %v", errClosingWriter, err)
 	}
 
 	return nil
