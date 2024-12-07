@@ -1,10 +1,16 @@
 package data
 
 import (
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+)
+
+const (
+	errBookAlreadyBorrowed = "book is already borrowed"
+	errNonexistentBook     = "book cannot be found"
 )
 
 type Book struct {
@@ -97,8 +103,14 @@ func (b *Book) UpdateBook(title *string, isbn *string, authors *[]string, publis
 }
 
 // markBookAsBorrowed marks the book as currently borrowed.
-func (b *Book) markBookAsBorrowed() {
+func (b *Book) markBookAsBorrowed() error {
+	if b.Borrowed {
+		return errors.New(errBookAlreadyBorrowed)
+	}
+
 	b.Borrowed = true
+
+	return nil
 }
 
 // markBookAsNotBorrowed marks the book as not borrowed.
@@ -106,15 +118,15 @@ func (b *Book) markBookAsNotBorrowed() {
 	b.Borrowed = false
 }
 
-// getBookByISBN retrieves a book in the given slice by its title.
-func getBookByTitle(title string, books []Book) *Book {
+// getBookByTitle retrieves a book in the given slice by its title.
+func getBookByTitle(title string, books []Book) (*Book, error) {
 	for _, book := range books {
 		if title == book.Title {
-			return &book
+			return &book, nil
 		}
 	}
 
-	return nil
+	return nil, errors.New(errNonexistentBook)
 }
 
 // SearchBooks filters the given books slice based on the provided criteria.
@@ -132,32 +144,59 @@ func SearchBooks(books []Book, criteria SearchCriteria) []Book {
 
 // matchesAllCriteria checks if a book matches all the search criteria.
 func matchesAllCriteria(book Book, criteria SearchCriteria) bool {
-	if !checkTitle(book.Title, criteria.Title) {
-		return false
+	if criteria.Title != nil && len(*criteria.Title) > 0 {
+		if !checkTitle(book.Title, criteria.Title) {
+			return false
+		}
 	}
-	if !checkISBN(book.ISBN, criteria.ISBN) {
-		return false
+
+	if criteria.ISBN != nil && len(*criteria.ISBN) > 0 {
+		if !checkISBN(book.ISBN, criteria.ISBN) {
+			return false
+		}
 	}
-	if !checkStringSlice(book.Authors, criteria.Authors) {
-		return false
+
+	if criteria.Authors != nil {
+		if !checkStringSlice(book.Authors, criteria.Authors) {
+			return false
+		}
 	}
-	if !checkStringSlice(book.Publishers, criteria.Publishers) {
-		return false
+
+	if criteria.Publishers != nil {
+		if !checkStringSlice(book.Publishers, criteria.Publishers) {
+			return false
+		}
 	}
-	if !checkStringSlice(book.Genres, criteria.Genres) {
-		return false
+
+	if criteria.Genres != nil {
+		if !checkStringSlice(book.Genres, criteria.Genres) {
+			return false
+		}
 	}
-	if !checkBorrowed(book.Borrowed, criteria.Borrowed) {
-		return false
+
+	if criteria.Borrowed != nil {
+		if !checkBorrowed(book.Borrowed, criteria.Borrowed) {
+			return false
+		}
 	}
-	if !checkPages(book.Pages, criteria.MinPages, criteria.MaxPages) {
-		return false
+
+	if criteria.MinPages != nil && criteria.MaxPages != nil {
+		if !checkPages(book.Pages, criteria.MinPages, criteria.MaxPages) {
+			return false
+		}
 	}
-	if !checkEdition(book.Edition, criteria.MinEdition, criteria.MaxEdition) {
-		return false
+
+	if criteria.MinEdition != nil && criteria.MaxEdition != nil {
+		if !checkEdition(book.Edition, criteria.MinEdition, criteria.MaxEdition) {
+			return false
+
+		}
 	}
-	if !checkPublished(book.Published, criteria.MinPublished, criteria.MaxPublished) {
-		return false
+
+	if criteria.MinPublished != nil && criteria.MaxPublished != nil {
+		if !checkPublished(book.Published, criteria.MinPublished, criteria.MaxPublished) {
+			return false
+		}
 	}
 
 	return true
@@ -175,70 +214,39 @@ func contains(slice []string, str string) bool {
 
 // checkTitle checks if the book's title matches the search criteria.
 func checkTitle(bookTitle string, title *string) bool {
-	if title != nil && !strings.Contains(bookTitle, *title) {
-		return false
-	}
-	return true
+	return strings.Contains(bookTitle, *title)
 }
 
 // checkISBN checks if the book's ISBN matches the search criteria.
 func checkISBN(bookISBN string, isbn *string) bool {
-	if isbn != nil && bookISBN != *isbn {
-		return false
-	}
-	return true
+	return bookISBN == *isbn
 }
 
 // checkStringSlice checks if any element of the book's string slice matches the search criteria.
 func checkStringSlice(s []string, criteriaSlice *[]string) bool {
-	if criteriaSlice != nil {
-		for _, criteria := range *criteriaSlice {
-			if contains(s, criteria) {
-				return true
-			}
-		}
-		return false
+	for _, criteria := range *criteriaSlice {
+		return contains(s, criteria)
 	}
+
 	return true
 }
 
 // checkBorrowed checks if the book's borrowed status matches the search criteria.
 func checkBorrowed(bookBorrowed bool, borrowed *bool) bool {
-	if borrowed != nil && bookBorrowed != *borrowed {
-		return false
-	}
-	return true
+	return bookBorrowed == *borrowed
 }
 
 // checkPages checks if the book's pages match the search criteria.
 func checkPages(bookPages int, minPages, maxPages *int) bool {
-	if minPages != nil && bookPages < *minPages {
-		return false
-	}
-	if maxPages != nil && bookPages > *maxPages {
-		return false
-	}
-	return true
+	return bookPages >= *minPages && bookPages <= *maxPages
 }
 
 // checkEdition checks if the book's edition matches the search criteria.
 func checkEdition(bookEdition int, minEdition, maxEdition *int) bool {
-	if minEdition != nil && bookEdition < *minEdition {
-		return false
-	}
-	if maxEdition != nil && bookEdition > *maxEdition {
-		return false
-	}
-	return true
+	return bookEdition >= *minEdition && bookEdition <= *maxEdition
 }
 
 // checkPublished checks if the book's published date matches the search criteria.
 func checkPublished(bookPublished time.Time, minPublished, maxPublished *time.Time) bool {
-	if minPublished != nil && bookPublished.Before(*minPublished) {
-		return false
-	}
-	if maxPublished != nil && bookPublished.After(*maxPublished) {
-		return false
-	}
-	return true
+	return !bookPublished.Before(*minPublished) && !bookPublished.After(*maxPublished)
 }
