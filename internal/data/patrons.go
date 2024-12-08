@@ -109,7 +109,7 @@ func (p *Patron) UpdatePatron(name *string, categoryType *PatronCategoryType, di
 
 // BorrowBook allows the patron to borrow a book by title from the available list of books.
 // It updates the book's status to borrowed and records the borrowing details for the patron.
-func (p *Patron) BorrowBook(title string, books []Book) error {
+func (p *Patron) BorrowBook(title string, books []*Book) error {
 	book, err := getBookByTitle(title, books)
 	if err != nil {
 		return fmt.Errorf("%v: %v", errUnableToBorrow, err)
@@ -136,7 +136,7 @@ func (p *Patron) BorrowBook(title string, books []Book) error {
 
 // ReturnBook allows the patron to return a borrowed book by title.
 // It updates the book's status to available and removes the borrowing record for the patron.
-func (p *Patron) ReturnBook(title string, books []Book) error {
+func (p *Patron) ReturnBook(title string, books []*Book) error {
 	book, err := getBookByTitle(title, books)
 	if err != nil {
 		return fmt.Errorf("%v: %v", errUnableToReturn, err)

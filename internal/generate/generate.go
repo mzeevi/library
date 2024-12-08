@@ -8,8 +8,8 @@ import (
 )
 
 // Books returns a slice of n new books.
-func Books(n int) []data.Book {
-	var books []data.Book
+func Books(n int) []*data.Book {
+	var books []*data.Book
 
 	for i := 0; i < n; i++ {
 		s := strconv.Itoa(i)
@@ -28,8 +28,8 @@ func Books(n int) []data.Book {
 }
 
 // Patrons returns a slice of n new patrons.
-func Patrons(n int, discounts map[data.PatronCategoryType]float64) ([]data.Patron, error) {
-	var patrons []data.Patron
+func Patrons(n int, discounts map[data.PatronCategoryType]float64) ([]*data.Patron, error) {
+	var patrons []*data.Patron
 	var categoryType data.PatronCategoryType
 
 	for i := 0; i < n; i++ {
@@ -47,7 +47,7 @@ func Patrons(n int, discounts map[data.PatronCategoryType]float64) ([]data.Patro
 			return patrons, err
 		}
 
-		patrons = append(patrons, patron)
+		patrons = append(patrons, &patron)
 	}
 
 	return patrons, nil
