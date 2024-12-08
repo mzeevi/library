@@ -10,19 +10,19 @@ import (
 func TestMarkBookAsBorrowed(t *testing.T) {
 	tests := []struct {
 		name                  string
-		book                  Book
+		book                  *Book
 		expectedError         error
 		initialBorrowedStatus bool
 	}{
 		{
 			name:                  "AlreadyBorrowedBook",
-			book:                  Book{Title: "Go Programming", Borrowed: true},
+			book:                  &Book{Title: "Go Programming", Borrowed: true},
 			expectedError:         errors.New(errBookAlreadyBorrowed),
 			initialBorrowedStatus: true,
 		},
 		{
 			name:                  "SuccessfullyBorrowBook",
-			book:                  Book{Title: "Go Programming", Borrowed: false},
+			book:                  &Book{Title: "Go Programming", Borrowed: false},
 			expectedError:         nil,
 			initialBorrowedStatus: false,
 		},
@@ -101,7 +101,7 @@ func TestNewBook(t *testing.T) {
 	tests := []struct {
 		name string
 		args args
-		want Book
+		want *Book
 	}{
 		{
 			name: "CreateSuccessfully",
@@ -116,7 +116,7 @@ func TestNewBook(t *testing.T) {
 				published:      now,
 				borrowDuration: 14 * 24 * time.Hour,
 			},
-			want: Book{
+			want: &Book{
 				Title:          "Test Title",
 				ISBN:           "1234567890",
 				Authors:        []string{"Author1", "Author2"},
@@ -167,13 +167,13 @@ func TestUpdateBook(t *testing.T) {
 	}
 	tests := []struct {
 		name string
-		book Book
+		book *Book
 		args args
-		want Book
+		want *Book
 	}{
 		{
 			name: "update title and authors",
-			book: Book{
+			book: &Book{
 				Title:   "Old Title",
 				Authors: []string{"Old Author"},
 			},
@@ -181,14 +181,14 @@ func TestUpdateBook(t *testing.T) {
 				title:   ptrStr("New Title"),
 				authors: &[]string{"New Author1", "New Author2"},
 			},
-			want: Book{
+			want: &Book{
 				Title:   "New Title",
 				Authors: []string{"New Author1", "New Author2"},
 			},
 		},
 		{
 			name: "update ISBN, pages, and edition",
-			book: Book{
+			book: &Book{
 				ISBN:    "1234567890",
 				Pages:   300,
 				Edition: 1,
@@ -198,7 +198,7 @@ func TestUpdateBook(t *testing.T) {
 				pages:   ptrInt(400),
 				edition: ptrInt(2),
 			},
-			want: Book{
+			want: &Book{
 				ISBN:    "0987654321",
 				Pages:   400,
 				Edition: 2,
@@ -206,7 +206,7 @@ func TestUpdateBook(t *testing.T) {
 		},
 		{
 			name: "update publishers and genres",
-			book: Book{
+			book: &Book{
 				Publishers: []string{"Old Publisher"},
 				Genres:     []string{"Fiction"},
 			},
@@ -214,14 +214,14 @@ func TestUpdateBook(t *testing.T) {
 				publishers: &[]string{"New Publisher1", "New Publisher2"},
 				genres:     &[]string{"Adventure", "Mystery"},
 			},
-			want: Book{
+			want: &Book{
 				Publishers: []string{"New Publisher1", "New Publisher2"},
 				Genres:     []string{"Adventure", "Mystery"},
 			},
 		},
 		{
 			name: "update published date and borrow duration",
-			book: Book{
+			book: &Book{
 				Published:      now,
 				BorrowDuration: 14 * 24 * time.Hour,
 			},
@@ -229,14 +229,14 @@ func TestUpdateBook(t *testing.T) {
 				published:      &newTime,
 				borrowDuration: &newDuration,
 			},
-			want: Book{
+			want: &Book{
 				Published:      newTime,
 				BorrowDuration: newDuration,
 			},
 		},
 		{
 			name: "update all fields",
-			book: Book{
+			book: &Book{
 				Title:          "Old Title",
 				ISBN:           "1234567890",
 				Authors:        []string{"Author1"},
@@ -258,7 +258,7 @@ func TestUpdateBook(t *testing.T) {
 				published:      &newTime,
 				borrowDuration: &newDuration,
 			},
-			want: Book{
+			want: &Book{
 				Title:          "New Title",
 				ISBN:           "0987654321",
 				Authors:        []string{"Author1", "Author2"},
@@ -272,7 +272,7 @@ func TestUpdateBook(t *testing.T) {
 		},
 		{
 			name: "no updates",
-			book: Book{
+			book: &Book{
 				Title:          "No Update",
 				ISBN:           "1111111111",
 				Authors:        []string{"Author1"},
@@ -284,7 +284,7 @@ func TestUpdateBook(t *testing.T) {
 				BorrowDuration: 7 * 24 * time.Hour,
 			},
 			args: args{},
-			want: Book{
+			want: &Book{
 				Title:          "No Update",
 				ISBN:           "1111111111",
 				Authors:        []string{"Author1"},
@@ -308,7 +308,7 @@ func TestUpdateBook(t *testing.T) {
 }
 
 func TestSearchBooks(t *testing.T) {
-	books := []Book{
+	books := []*Book{
 		{
 			ID:         1,
 			Title:      "The Great Gatsby",
@@ -374,49 +374,49 @@ func TestSearchBooks(t *testing.T) {
 	tests := []struct {
 		name     string
 		criteria SearchCriteria
-		want     []Book
+		want     []*Book
 	}{
 		{
 			name: "ByTileExactMatch",
 			criteria: SearchCriteria{
 				Title: ptrStr("The Great Gatsby"),
 			},
-			want: []Book{books[0]},
+			want: []*Book{books[0]},
 		},
 		{
 			name: "TitlePartialMatch",
 			criteria: SearchCriteria{
 				Title: ptrStr("Pride"),
 			},
-			want: []Book{books[4]},
+			want: []*Book{books[4]},
 		},
 		{
 			name: "ByISBN",
 			criteria: SearchCriteria{
 				ISBN: ptrStr("1112131415"),
 			},
-			want: []Book{books[2]},
+			want: []*Book{books[2]},
 		},
 		{
 			name: "ByAuthor",
 			criteria: SearchCriteria{
 				Authors: &[]string{"Jane Austen"},
 			},
-			want: []Book{books[4]},
+			want: []*Book{books[4]},
 		},
 		{
 			name: "ByPublisher",
 			criteria: SearchCriteria{
 				Publishers: &[]string{"Scribner"},
 			},
-			want: []Book{books[0]},
+			want: []*Book{books[0]},
 		},
 		{
 			name: "ByGenre",
 			criteria: SearchCriteria{
 				Genres: &[]string{"Fiction"},
 			},
-			want: []Book{books[0], books[2], books[3], books[4]},
+			want: []*Book{books[0], books[2], books[3], books[4]},
 		},
 		{
 			name: "ByBorrowedStatus",
@@ -431,7 +431,7 @@ func TestSearchBooks(t *testing.T) {
 				MinPages: ptrInt(200),
 				MaxPages: ptrInt(400),
 			},
-			want: []Book{books[0], books[1], books[3]},
+			want: []*Book{books[0], books[1], books[3]},
 		},
 		{
 			name: "ByEditionRange",
@@ -447,7 +447,7 @@ func TestSearchBooks(t *testing.T) {
 				MinPublished: ptrTime(time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)),
 				MaxPublished: ptrTime(time.Date(1950, 12, 31, 0, 0, 0, 0, time.UTC)),
 			},
-			want: []Book{books[0], books[1]},
+			want: []*Book{books[0], books[1]},
 		},
 		{
 			name:     "NoCriteria",
@@ -459,7 +459,7 @@ func TestSearchBooks(t *testing.T) {
 			criteria: SearchCriteria{
 				ISBN: ptrStr("0000000000"),
 			},
-			want: []Book{},
+			want: []*Book{},
 		},
 	}
 
@@ -896,7 +896,7 @@ func TestContains(t *testing.T) {
 func TestGetBookByTitle(t *testing.T) {
 	type args struct {
 		title string
-		books []Book
+		books []*Book
 	}
 	tests := []struct {
 		name    string
@@ -908,7 +908,7 @@ func TestGetBookByTitle(t *testing.T) {
 			name: "FoundBook",
 			args: args{
 				title: "Test Book",
-				books: []Book{
+				books: []*Book{
 					{Title: "Test Book", ISBN: "1234567890"},
 					{Title: "Another Book", ISBN: "0987654321"},
 				},
@@ -920,7 +920,7 @@ func TestGetBookByTitle(t *testing.T) {
 			name: "NotFoundBook",
 			args: args{
 				title: "Nonexistent Book",
-				books: []Book{
+				books: []*Book{
 					{Title: "Test Book", ISBN: "1234567890"},
 					{Title: "Another Book", ISBN: "0987654321"},
 				},
@@ -932,7 +932,7 @@ func TestGetBookByTitle(t *testing.T) {
 			name: "EmptyBookSlice",
 			args: args{
 				title: "Test Book",
-				books: []Book{},
+				books: []*Book{},
 			},
 			want:    nil,
 			wantErr: errors.New(errNonexistentBook),
@@ -956,7 +956,7 @@ func TestGetBookByTitle(t *testing.T) {
 
 func TestMatchesAllCriteria(t *testing.T) {
 	type args struct {
-		book     Book
+		book     *Book
 		criteria SearchCriteria
 	}
 	tests := []struct {
@@ -967,7 +967,7 @@ func TestMatchesAllCriteria(t *testing.T) {
 		{
 			name: "AllCriteriaMatch",
 			args: args{
-				book: Book{
+				book: &Book{
 					Title:      "The Great Gatsby",
 					ISBN:       "1234567890",
 					Authors:    []string{"F. Scott Fitzgerald"},
@@ -998,7 +998,7 @@ func TestMatchesAllCriteria(t *testing.T) {
 		{
 			name: "NoSpecifiedCriteria",
 			args: args{
-				book: Book{
+				book: &Book{
 					Title: "1984",
 					ISBN:  "0987654321",
 					Authors: []string{
@@ -1017,7 +1017,7 @@ func TestMatchesAllCriteria(t *testing.T) {
 		{
 			name: "AuthorsDoNotMatch",
 			args: args{
-				book: Book{
+				book: &Book{
 					Title:      "Moby Dick",
 					ISBN:       "1112131415",
 					Authors:    []string{"Herman Melville"},
@@ -1036,7 +1036,7 @@ func TestMatchesAllCriteria(t *testing.T) {
 		{
 			name: "MultipleCriteriaMismatch",
 			args: args{
-				book: Book{
+				book: &Book{
 					Title:      "To Kill a Mockingbird",
 					ISBN:       "5556677788",
 					Authors:    []string{"Harper Lee"},
@@ -1060,7 +1060,7 @@ func TestMatchesAllCriteria(t *testing.T) {
 		{
 			name: "TitleAndPublisherMatchOnly",
 			args: args{
-				book: Book{
+				book: &Book{
 					Title:      "Pride and Prejudice",
 					ISBN:       "2223334445",
 					Authors:    []string{"Jane Austen"},

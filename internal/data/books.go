@@ -3,6 +3,7 @@ package data
 import (
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +28,7 @@ type Book struct {
 	Publishers     []string
 	Genres         []string
 	Version        int32
+	mu             sync.Mutex
 }
 
 // SearchCriteria struct holds optional search filters for each field of the Book struct
@@ -46,8 +48,8 @@ type SearchCriteria struct {
 }
 
 // NewBook creates a new book with the provided details.
-func NewBook(title string, isbn string, authors []string, publishers []string, genres []string, pages int, edition int, published time.Time, borrowDuration time.Duration) Book {
-	return Book{
+func NewBook(title string, isbn string, authors []string, publishers []string, genres []string, pages int, edition int, published time.Time, borrowDuration time.Duration) *Book {
+	return &Book{
 		ID:             uuid.New().ID(),
 		Title:          title,
 		ISBN:           isbn,
@@ -104,6 +106,9 @@ func (b *Book) UpdateBook(title *string, isbn *string, authors *[]string, publis
 
 // markBookAsBorrowed marks the book as currently borrowed.
 func (b *Book) markBookAsBorrowed() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if b.Borrowed {
 		return errors.New(errBookAlreadyBorrowed)
 	}
@@ -119,10 +124,10 @@ func (b *Book) markBookAsNotBorrowed() {
 }
 
 // getBookByTitle retrieves a book in the given slice by its title.
-func getBookByTitle(title string, books []Book) (*Book, error) {
-	for _, book := range books {
-		if title == book.Title {
-			return &book, nil
+func getBookByTitle(title string, books []*Book) (*Book, error) {
+	for i := range books {
+		if title == books[i].Title {
+			return books[i], nil
 		}
 	}
 
@@ -130,12 +135,12 @@ func getBookByTitle(title string, books []Book) (*Book, error) {
 }
 
 // SearchBooks filters the given books slice based on the provided criteria.
-func SearchBooks(books []Book, criteria SearchCriteria) []Book {
-	var results []Book
+func SearchBooks(books []*Book, criteria SearchCriteria) []*Book {
+	var results []*Book
 
-	for _, book := range books {
-		if matchesAllCriteria(book, criteria) {
-			results = append(results, book)
+	for i := range books {
+		if matchesAllCriteria(books[i], criteria) {
+			results = append(results, books[i])
 		}
 	}
 
@@ -143,7 +148,7 @@ func SearchBooks(books []Book, criteria SearchCriteria) []Book {
 }
 
 // matchesAllCriteria checks if a book matches all the search criteria.
-func matchesAllCriteria(book Book, criteria SearchCriteria) bool {
+func matchesAllCriteria(book *Book, criteria SearchCriteria) bool {
 	if criteria.Title != nil && len(*criteria.Title) > 0 {
 		if !checkTitle(book.Title, criteria.Title) {
 			return false

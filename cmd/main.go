@@ -11,8 +11,8 @@ import (
 )
 
 type Library struct {
-	Books   []data.Book
-	Patrons []data.Patron
+	Books   []*data.Book
+	Patrons []*data.Patron
 }
 
 type config struct {

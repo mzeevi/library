@@ -126,7 +126,7 @@ func TestNewPatron(t *testing.T) {
 func TestBorrowBook(t *testing.T) {
 	tests := []struct {
 		name             string
-		bookList         []Book
+		bookList         []*Book
 		patron           Patron
 		titleToBorrow    string
 		expectedError    error
@@ -134,7 +134,7 @@ func TestBorrowBook(t *testing.T) {
 	}{
 		{
 			name: "SuccessfulBorrow",
-			bookList: []Book{
+			bookList: []*Book{
 				{Title: "Go Programming", ISBN: "123456", Borrowed: false, BorrowDuration: 7},
 			},
 			patron:           Patron{Name: "John Doe"},
@@ -144,7 +144,7 @@ func TestBorrowBook(t *testing.T) {
 		},
 		{
 			name: "BookAlreadyBorrowed",
-			bookList: []Book{
+			bookList: []*Book{
 				{Title: "Go Programming", ISBN: "123456", Borrowed: true, BorrowDuration: 7},
 			},
 			patron:           Patron{Name: "John Doe"},
@@ -154,7 +154,7 @@ func TestBorrowBook(t *testing.T) {
 		},
 		{
 			name: "BookNotFound",
-			bookList: []Book{
+			bookList: []*Book{
 				{Title: "Go Programming", ISBN: "123456", Borrowed: false, BorrowDuration: 7},
 			},
 			patron:           Patron{Name: "John Doe"},
@@ -164,7 +164,7 @@ func TestBorrowBook(t *testing.T) {
 		},
 		{
 			name: "NilBorrowedBooksMap",
-			bookList: []Book{
+			bookList: []*Book{
 				{Title: "Go Programming", ISBN: "123456", Borrowed: false, BorrowDuration: 7},
 			},
 			patron:           Patron{Name: "John Doe", BorrowedBooks: nil},
@@ -345,7 +345,7 @@ func TestGetBorrowedBooks(t *testing.T) {
 func TestReturnBook(t *testing.T) {
 	type args struct {
 		title string
-		books []Book
+		books []*Book
 	}
 	tests := []struct {
 		name    string
@@ -357,7 +357,7 @@ func TestReturnBook(t *testing.T) {
 			name: "ReturnBookSuccessfully",
 			args: args{
 				title: "Test Book",
-				books: []Book{
+				books: []*Book{
 					{Title: "Test Book", ISBN: "1234567890", Borrowed: true},
 				},
 			},
@@ -373,7 +373,7 @@ func TestReturnBook(t *testing.T) {
 			name: "BookNotFound",
 			args: args{
 				title: "Nonexistent Book",
-				books: []Book{
+				books: []*Book{
 					{Title: "Test Book", ISBN: "1234567890", Borrowed: true},
 				},
 			},
@@ -389,7 +389,7 @@ func TestReturnBook(t *testing.T) {
 			name: "BookNotOwnedByPatron",
 			args: args{
 				title: "Another Book",
-				books: []Book{
+				books: []*Book{
 					{Title: "Test Book", ISBN: "1234567890", Borrowed: true},
 					{Title: "Another Book", ISBN: "0987654321", Borrowed: true},
 				},
