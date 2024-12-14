@@ -6,53 +6,56 @@ import (
 	"fmt"
 	"github.com/mzeevi/library/internal/data"
 	"github.com/mzeevi/library/internal/data/testhelpers"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"strconv"
 	"time"
 )
 
 func (app *application) basic() error {
-	if err := app.insertBooks(); err != nil {
+	bookIDs, err := app.insertBooks(10)
+	if err != nil {
 		return fmt.Errorf("failed to insert books to database: %v", err)
 	}
 
-	if err := app.insertPatrons(); err != nil {
+	patronIDs, err := app.insertPatrons(10)
+	if err != nil {
 		return fmt.Errorf("failed to insert patrons to database: %v", err)
 	}
 
-	if err := app.borrowBook("1", "1", time.Now()); err != nil {
+	if err = app.borrowBook(bookIDs[1], patronIDs[1], time.Now()); err != nil {
 		return fmt.Errorf("failed to borrow book: %v", err)
 	}
 
-	if err := app.borrowBook("2", "1", time.Now()); err != nil {
+	if err = app.borrowBook(bookIDs[2], patronIDs[1], time.Now()); err != nil {
 		return fmt.Errorf("failed to borrow book: %v", err)
 	}
 
-	if err := app.borrowBook("3", "3", time.Now()); err != nil {
+	if err = app.borrowBook(bookIDs[3], patronIDs[3], time.Now()); err != nil {
 		return fmt.Errorf("failed to borrow book: %v", err)
 	}
 
-	if err := app.returnBook("1", "1"); err != nil {
+	if err = app.returnBook(bookIDs[1], patronIDs[1]); err != nil {
 		return fmt.Errorf("failed to return book: %v", err)
 	}
 
-	if err := app.borrowBook("1", "1", time.Now()); err != nil {
+	if err = app.borrowBook(bookIDs[1], patronIDs[1], time.Now()); err != nil {
 		return fmt.Errorf("failed to borrow book: %v", err)
 	}
 
-	if err := app.getAllBorrowedBooks(); err != nil {
+	if err = app.getAllBorrowedBooks(); err != nil {
 		return fmt.Errorf("failed to get all borrowed books: %v", err)
 	}
 
-	if err := app.getAllPatrons(); err != nil {
+	if err = app.getAllPatrons(); err != nil {
 		return fmt.Errorf("failed to get all patrons: %v", err)
 	}
 
-	if err := app.getAllTransactions(); err != nil {
+	if err = app.getAllTransactions(); err != nil {
 		return fmt.Errorf("failed to get all output: %v", err)
 	}
 
-	if err := app.calculateFine("3"); err != nil {
+	if err = app.calculateFine(patronIDs[3]); err != nil {
 		return fmt.Errorf("failed to get all output: %v", err)
 	}
 
@@ -60,36 +63,48 @@ func (app *application) basic() error {
 }
 
 // insertBooks inserts Books into the database.
-func (app *application) insertBooks() error {
+func (app *application) insertBooks(n int) ([]string, error) {
+	var ids []string
+
 	client := app.models.Books.Client
-
 	coll := client.Database(app.models.Books.Database).Collection(app.models.Books.Collection)
-	books := mockBooks(10)
 
-	_, err := coll.InsertMany(context.Background(), books)
+	books := mockBooks(n)
+
+	res, err := coll.InsertMany(context.Background(), books)
 	if err != nil {
-		return err
+		return ids, err
 	}
 
-	return nil
+	for _, oid := range res.InsertedIDs {
+		ids = append(ids, oid.(primitive.ObjectID).Hex())
+	}
+
+	return ids, nil
 }
 
 // insertPatrons inserts Patrons into the database.
-func (app *application) insertPatrons() error {
+func (app *application) insertPatrons(n int) ([]string, error) {
+	var ids []string
+
 	client := app.models.Patrons.Client
-
 	coll := client.Database(app.models.Patrons.Database).Collection(app.models.Patrons.Collection)
-	patrons, err := mockPatrons(10, app.cost.discounts)
+
+	patrons, err := mockPatrons(n, app.cost.discounts)
 	if err != nil {
-		return fmt.Errorf("failed to generate patrons: %v", err)
+		return ids, fmt.Errorf("failed to generate patrons: %v", err)
 	}
 
-	_, err = coll.InsertMany(context.Background(), patrons)
+	res, err := coll.InsertMany(context.Background(), patrons)
 	if err != nil {
-		return err
+		return ids, err
 	}
 
-	return nil
+	for _, oid := range res.InsertedIDs {
+		ids = append(ids, oid.(primitive.ObjectID).Hex())
+	}
+
+	return ids, nil
 }
 
 // borrowBook implements the logic of borrowing a book.
@@ -108,7 +123,7 @@ func (app *application) borrowBook(bookID, patronID string, dueDate time.Time) e
 		return err
 	}
 
-	_, err = app.models.Books.Get(sessionContext, data.BookFilter{ID: &bookID})
+	book, err := app.models.Books.Get(sessionContext, data.BookFilter{ID: &bookID})
 	if err != nil {
 		return err
 	}
@@ -119,19 +134,12 @@ func (app *application) borrowBook(bookID, patronID string, dueDate time.Time) e
 	}
 
 	var available bool
-
-	_, err = app.models.Transactions.Get(sessionContext, data.TransactionFilter{
-		Status: ptr(data.TransactionStatusBorrowed),
-		BookID: &bookID,
-	})
-	if err != nil {
-		if errors.Is(err, data.ErrDocumentNotFound) {
-			available = true
-		}
+	if book.BorrowedCopies < book.Copies {
+		available = true
 	}
 
 	if !available {
-		return errors.New("book already borrowed")
+		return errors.New("book not available")
 	}
 
 	transaction := &data.Transaction{
@@ -143,6 +151,12 @@ func (app *application) borrowBook(bookID, patronID string, dueDate time.Time) e
 	}
 
 	if _, err = app.models.Transactions.Insert(sessionContext, transaction); err != nil {
+		return err
+	}
+
+	book.BorrowedCopies = book.BorrowedCopies + 1
+	err = app.models.Books.Update(sessionContext, data.BookFilter{ID: &book.ID}, book)
+	if err != nil {
 		return err
 	}
 
@@ -165,7 +179,7 @@ func (app *application) returnBook(bookID, patronID string) error {
 		return err
 	}
 
-	_, err = app.models.Books.Get(sessionContext, data.BookFilter{ID: &bookID})
+	book, err := app.models.Books.Get(sessionContext, data.BookFilter{ID: &bookID})
 	if err != nil {
 		return err
 	}
@@ -189,6 +203,12 @@ func (app *application) returnBook(bookID, patronID string) error {
 		return err
 	}
 
+	book.BorrowedCopies = book.BorrowedCopies - 1
+	err = app.models.Books.Update(sessionContext, data.BookFilter{ID: &book.ID}, book)
+	if err != nil {
+		return err
+	}
+
 	return session.CommitTransaction(context.Background())
 }
 
@@ -196,10 +216,8 @@ func (app *application) returnBook(bookID, patronID string) error {
 func (app *application) getAllBorrowedBooks() error {
 	transactions, _, err := app.models.Transactions.GetAll(
 		context.Background(),
-		data.TransactionFilter{
-			Status: ptr(data.TransactionStatusBorrowed),
-		},
-		data.Paginator{})
+		data.TransactionFilter{Status: ptr(data.TransactionStatusBorrowed)},
+		data.Paginator{Page: 1, PageSize: 10000})
 	if err != nil {
 		return err
 	}
@@ -258,7 +276,7 @@ func (app *application) calculateFine(patronID string) error {
 		return err
 	}
 
-	transactions, _, err := app.models.Transactions.GetAll(context.Background(), data.TransactionFilter{PatronID: &patronID}, data.Paginator{})
+	transactions, _, err := app.models.Transactions.GetAll(context.Background(), data.TransactionFilter{PatronID: &patronID}, data.Paginator{Page: 1, PageSize: 10000})
 	if err != nil {
 		return err
 	}
@@ -284,8 +302,8 @@ func mockBooks(n int) []interface{} {
 	for i := 1; i <= n; i++ {
 		s := strconv.Itoa(i)
 
-		book := data.NewBook(strconv.Itoa(i), fmt.Sprintf("test-book-%s", s), testhelpers.GenerateISBN(),
-			i, i,
+		book := data.NewBook("", fmt.Sprintf("test-book-%s", s), testhelpers.GenerateISBN(),
+			i, i, i,
 			[]string{fmt.Sprintf("test-author-1-%s", s), fmt.Sprintf("test-author-2-%s", s)},
 			[]string{fmt.Sprintf("test-publisher-1-%s", s), fmt.Sprintf("test-publisher-2-%s", s)},
 			[]string{fmt.Sprintf("test-genre-1-%s", s), fmt.Sprintf("test-genre-2-%s", s)},
@@ -319,7 +337,7 @@ func mockPatrons(n int, discounts map[data.PatronCategoryType]float64) ([]interf
 			}
 		}
 
-		patron := data.NewPatron(strconv.Itoa(i), fmt.Sprintf("test-%s", s), fmt.Sprintf("test-%s@email.com", s), category)
+		patron := data.NewPatron("", fmt.Sprintf("test-%s", s), fmt.Sprintf("test-%s@email.com", s), category)
 		patrons = append(patrons, patron)
 	}
 

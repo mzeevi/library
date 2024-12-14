@@ -13,38 +13,44 @@ import (
 )
 
 type Book struct {
-	ID          string    `bson:"_id,omitempty" json:"id,omitempty"`
-	Pages       int       `bson:"pages" json:"pages"`
-	Edition     int       `bson:"edition" json:"edition"`
-	PublishedAt time.Time `bson:"published_at" json:"published_at"`
-	CreatedAt   time.Time `bson:"created_at" json:"created_at"`
-	UpdatedAt   time.Time `bson:"updated_at" json:"updated_at"`
-	Title       string    `bson:"title" json:"title"`
-	ISBN        string    `bson:"isbn" json:"isbn"`
-	Authors     []string  `bson:"authors" json:"authors"`
-	Publishers  []string  `bson:"publishers" json:"publishers"`
-	Genres      []string  `bson:"genres" json:"genres"`
-	Version     int32     `bson:"version" json:"-"`
+	ID             string    `bson:"_id,omitempty" json:"id,omitempty"`
+	Pages          int       `bson:"pages" json:"pages"`
+	Edition        int       `bson:"edition" json:"edition"`
+	Copies         int       `bson:"copies" json:"copies"`
+	BorrowedCopies int       `bson:"borrowed_copies" json:"borrowed_copies"`
+	PublishedAt    time.Time `bson:"published_at" json:"published_at"`
+	CreatedAt      time.Time `bson:"created_at" json:"created_at"`
+	UpdatedAt      time.Time `bson:"updated_at" json:"updated_at"`
+	Title          string    `bson:"title" json:"title"`
+	ISBN           string    `bson:"isbn" json:"isbn"`
+	Authors        []string  `bson:"authors" json:"authors"`
+	Publishers     []string  `bson:"publishers" json:"publishers"`
+	Genres         []string  `bson:"genres" json:"genres"`
+	Version        int32     `bson:"version" json:"-"`
 }
 
 type BookFilter struct {
-	ID             *string    `json:"id,omitempty"`
-	MinPages       *int       `json:"min_pages,omitempty"`
-	MaxPages       *int       `json:"max_pages,omitempty"`
-	MinEdition     *int       `json:"min_edition,omitempty"`
-	MaxEdition     *int       `json:"max_edition,omitempty"`
-	MinPublishedAt *time.Time `json:"min_published_at,omitempty"`
-	MaxPublishedAt *time.Time `json:"max_published_at,omitempty"`
-	MinCreatedAt   *time.Time `json:"min_created_at,omitempty"`
-	MaxCreatedAt   *time.Time `json:"max_created_at,omitempty"`
-	MinUpdatedAt   *time.Time `json:"min_updated_at,omitempty"`
-	MaxUpdatedAt   *time.Time `json:"max_updated_at,omitempty"`
-	Title          *string    `json:"title,omitempty"`
-	ISBN           *string    `json:"isbn,omitempty"`
-	Authors        []string   `json:"authors,omitempty"`
-	Publishers     []string   `json:"publishers,omitempty"`
-	Genres         []string   `json:"genres,omitempty"`
-	Version        *int32     `json:"version,omitempty"`
+	ID                *string    `json:"id,omitempty"`
+	MinPages          *int       `json:"min_pages,omitempty"`
+	MaxPages          *int       `json:"max_pages,omitempty"`
+	MinEdition        *int       `json:"min_edition,omitempty"`
+	MaxEdition        *int       `json:"max_edition,omitempty"`
+	MinPublishedAt    *time.Time `json:"min_published_at,omitempty"`
+	MaxPublishedAt    *time.Time `json:"max_published_at,omitempty"`
+	MinCreatedAt      *time.Time `json:"min_created_at,omitempty"`
+	MaxCreatedAt      *time.Time `json:"max_created_at,omitempty"`
+	MinUpdatedAt      *time.Time `json:"min_updated_at,omitempty"`
+	MaxUpdatedAt      *time.Time `json:"max_updated_at,omitempty"`
+	Title             *string    `json:"title,omitempty"`
+	ISBN              *string    `json:"isbn,omitempty"`
+	Authors           []string   `json:"authors,omitempty"`
+	Publishers        []string   `json:"publishers,omitempty"`
+	Genres            []string   `json:"genres,omitempty"`
+	Version           *int32     `json:"version,omitempty"`
+	MinCopies         *int       `json:"min_copies,omitempty"`
+	MaxCopies         *int       `json:"max_copies,omitempty"`
+	MinBorrowedCopies *int       `json:"min_borrowed_copies,omitempty"`
+	MaxBorrowedCopies *int       `json:"max_borrowed_copies,omitempty"`
 }
 
 type BookModel struct {
@@ -54,12 +60,13 @@ type BookModel struct {
 }
 
 // NewBook creates a new book with the provided details.
-func NewBook(id string, title, isbn string, pages, edition int, authors, publishers, genres []string, publishedAt time.Time) *Book {
+func NewBook(id string, title, isbn string, pages, edition, copies int, authors, publishers, genres []string, publishedAt time.Time) *Book {
 	now := time.Now()
 	return &Book{
 		ID:          id,
 		Title:       title,
 		ISBN:        isbn,
+		Copies:      copies,
 		Pages:       pages,
 		Edition:     edition,
 		Authors:     authors,
@@ -150,6 +157,26 @@ func buildBookFilter(filter BookFilter) (bson.M, error) {
 	if filter.Version != nil {
 		query[versionTag] = *filter.Version
 	}
+	if filter.MinCopies != nil || filter.MaxCopies != nil {
+		copiesRange := bson.M{}
+		if filter.MinCopies != nil {
+			copiesRange["$gte"] = *filter.MinCopies
+		}
+		if filter.MaxCopies != nil {
+			copiesRange["$lte"] = *filter.MaxCopies
+		}
+		query[copiesTag] = copiesRange
+	}
+	if filter.MinBorrowedCopies != nil || filter.MaxBorrowedCopies != nil {
+		borrowedCopiesRange := bson.M{}
+		if filter.MinBorrowedCopies != nil {
+			borrowedCopiesRange["$gte"] = *filter.MinBorrowedCopies
+		}
+		if filter.MaxBorrowedCopies != nil {
+			borrowedCopiesRange["$lte"] = *filter.MaxBorrowedCopies
+		}
+		query[borrowedCopiesTag] = borrowedCopiesRange
+	}
 
 	return query, nil
 }
@@ -157,24 +184,42 @@ func buildBookFilter(filter BookFilter) (bson.M, error) {
 // buildBookUpdater constructs an update document for updating a Book.
 func buildBookUpdater(book *Book) bson.D {
 	updateFields := bson.D{
-		{Key: "title", Value: book.Title},
-		{Key: "isbn", Value: book.ISBN},
-		{Key: "pages", Value: book.Pages},
-		{Key: "edition", Value: book.Edition},
-		{Key: "published_at", Value: book.PublishedAt},
-		{Key: "authors", Value: book.Authors},
-		{Key: "publishers", Value: book.Publishers},
-		{Key: "genres", Value: book.Genres},
+		{Key: titleTag, Value: book.Title},
+		{Key: isbnTag, Value: book.ISBN},
+		{Key: pagesTag, Value: book.Pages},
+		{Key: editionTag, Value: book.Edition},
+		{Key: publishedAtTag, Value: book.PublishedAt},
+		{Key: authorsTag, Value: book.Authors},
+		{Key: publishersTag, Value: book.Publishers},
+		{Key: genresTag, Value: book.Genres},
+		{Key: copiesTag, Value: book.Copies},
+		{Key: borrowedCopiesTag, Value: book.BorrowedCopies},
 	}
 
-	updateFields = append(updateFields, bson.E{Key: "updated_at", Value: time.Now()})
+	updateFields = append(updateFields, bson.E{Key: updatedAtTag, Value: time.Now()})
 
 	update := bson.D{
 		{Key: "$set", Value: updateFields},
-		{Key: "$inc", Value: bson.D{{Key: "version", Value: 1}}},
+		{Key: "$inc", Value: bson.D{{Key: versionTag, Value: 1}}},
 	}
 
 	return update
+}
+
+// CreateUniqueISBNIndex creates a unique index using the ISBN field.
+func (b BookModel) CreateUniqueISBNIndex() error {
+	coll := b.Client.Database(b.Database).Collection(b.Collection)
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: isbnTag, Value: -1}},
+		Options: options.Index().SetUnique(true),
+	}
+
+	_, err := coll.Indexes().CreateOne(context.TODO(), indexModel)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Insert inserts a new Book into the database.

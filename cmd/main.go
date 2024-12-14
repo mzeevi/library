@@ -53,7 +53,7 @@ func main() {
 	flag.StringVar(&cfg.db.patronsCollection, "patrons-collection", "patrons", "MongoDB collection name for patrons")
 	flag.StringVar(&cfg.db.transactionsCollection, "transactions-collection", "transactions", "MongoDB collection name for output")
 
-	flag.Float64Var(&cfg.cost.overdueFine, "overdue-overdueFine", 10, "Fine for returning overdue book")
+	flag.Float64Var(&cfg.cost.overdueFine, "overdue-fine", 10, "Fine for returning overdue book")
 	flag.Float64Var(&cfg.cost.discount.teacher, "teacher-discount-percentage", 20, "Discount percentage for teachers")
 	flag.Float64Var(&cfg.cost.discount.student, "student-discount-discountPercentage", 25, "Discount percentage for students")
 
@@ -78,6 +78,11 @@ func main() {
 
 	if err = app.set(cfg, dbClient, logger); err != nil {
 		logger.Error(fmt.Sprintf("failed to set app values: %v", err))
+		os.Exit(1)
+	}
+
+	if err = app.models.Books.CreateUniqueISBNIndex(); err != nil {
+		logger.Error(fmt.Sprintf("failed to create unique index: %v", err))
 		os.Exit(1)
 	}
 

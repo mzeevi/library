@@ -31,20 +31,21 @@ const (
 	statusTag             = "status"
 	typeTag               = "type"
 	discountPercentageTag = "discount_percentage"
-	categoryTypeTag       = "category"
 )
 
 const (
-	pagesTag       = "pages"
-	editionTag     = "edition"
-	publishedAtTag = "published_at"
-	createdAtTag   = "created_at"
-	titleTag       = "title"
-	isbnTag        = "isbn"
-	authorsTag     = "authors"
-	publishersTag  = "publishers"
-	genresTag      = "genres"
-	versionTag     = "version"
+	pagesTag          = "pages"
+	editionTag        = "edition"
+	publishedAtTag    = "published_at"
+	createdAtTag      = "created_at"
+	titleTag          = "title"
+	isbnTag           = "isbn"
+	authorsTag        = "authors"
+	publishersTag     = "publishers"
+	genresTag         = "genres"
+	versionTag        = "version"
+	copiesTag         = "copies"
+	borrowedCopiesTag = "borrowed_copies"
 )
 
 const (
