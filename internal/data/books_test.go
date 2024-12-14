@@ -10,17 +10,17 @@ import (
 var (
 	testBooksIDs []interface{}
 	testBooks    = []interface{}{
-		NewBook("", "Test The Great Adventure", "978-1-23456-789-0", 300, 1, []string{"John Doe"}, []string{"Fiction Press"}, []string{"Adventure", "Fantasy"}, time.Date(2023, time.May, 12, 0, 0, 0, 0, time.UTC)),
-		NewBook("", "Test A Journey Beyond", "978-0-98765-432-1", 350, 2, []string{"Alice Johnson"}, []string{"Imagination Books"}, []string{"Fantasy", "Adventure"}, time.Date(2022, time.June, 5, 0, 0, 0, 0, time.UTC)),
-		NewBook("", "Test Science Explained", "978-0-11223-456-7", 400, 1, []string{"Bob Smith"}, []string{"Knowledge Publications"}, []string{"Non-fiction", "Science"}, time.Date(2021, time.September, 18, 0, 0, 0, 0, time.UTC)),
-		NewBook("", "Test The Mystery of Shadows", "978-1-22334-567-8", 250, 1, []string{"Claire Adams"}, []string{"Mystery House"}, []string{"Mystery", "Thriller"}, time.Date(2020, time.November, 25, 0, 0, 0, 0, time.UTC)),
-		NewBook("", "Test The Last Sunset", "978-1-23345-678-9", 500, 1, []string{"Michael Young"}, []string{"Sunset Publishing"}, []string{"Romance", "Drama"}, time.Date(2021, time.March, 2, 0, 0, 0, 0, time.UTC)),
-		NewBook("", "Test Cooking Secrets", "978-0-54321-987-6", 150, 1, []string{"Sarah Lee"}, []string{"Culinary Creations"}, []string{"Cooking", "Lifestyle"}, time.Date(2023, time.January, 15, 0, 0, 0, 0, time.UTC)),
-		NewBook("", "Test Tech Innovations", "978-0-89765-123-4", 200, 3, []string{"David Green", "Eva White"}, []string{"TechBooks Publishing"}, []string{"Technology", "Innovation"}, time.Date(2022, time.April, 7, 0, 0, 0, 0, time.UTC)),
-		NewBook("", "Test Ancient Legends", "978-1-23456-789-0", 300, 2, []string{"Nina Scott"}, []string{"History Publishing"}, []string{"History", "Legends"}, time.Date(2021, time.October, 12, 0, 0, 0, 0, time.UTC)),
-		NewBook("", "Test In the Depths of the Ocean", "978-0-98765-432-1", 220, 1, []string{"Jack Carter"}, []string{"Oceanic Press"}, []string{"Adventure", "Oceanography"}, time.Date(2022, time.February, 18, 0, 0, 0, 0, time.UTC)),
-		NewBook("", "Test Mystic Forest", "978-1-11223-334-5", 380, 2, []string{"Laura Mills"}, []string{"Fiction Publishers"}, []string{"Fantasy", "Adventure"}, time.Date(2020, time.August, 20, 0, 0, 0, 0, time.UTC)),
-		NewBook("conflict", "Test Conflict", "978-1-23456-214-0", 0, 1, []string{"Con Doe"}, []string{"Conflict"}, []string{"Conflict"}, time.Date(1999, time.May, 12, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test The Great Adventure", "978-1-23456-789-0", 300, 1, 5, []string{"John Doe"}, []string{"Fiction Press"}, []string{"Adventure", "Fantasy"}, time.Date(2023, time.May, 12, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test A Journey Beyond", "978-0-98765-432-2", 350, 2, 4, []string{"Alice Johnson"}, []string{"Imagination Books"}, []string{"Fantasy", "Adventure"}, time.Date(2022, time.June, 5, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test Science Explained", "978-0-11223-456-7", 400, 1, 3, []string{"Bob Smith"}, []string{"Knowledge Publications"}, []string{"Non-fiction", "Science"}, time.Date(2021, time.September, 18, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test The Mystery of Shadows", "978-1-22334-567-8", 250, 1, 2, []string{"Claire Adams"}, []string{"Mystery House"}, []string{"Mystery", "Thriller"}, time.Date(2020, time.November, 25, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test The Last Sunset", "978-1-23345-678-9", 500, 1, 6, []string{"Michael Young"}, []string{"Sunset Publishing"}, []string{"Romance", "Drama"}, time.Date(2021, time.March, 2, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test Cooking Secrets", "978-0-54321-987-6", 150, 1, 10, []string{"Sarah Lee"}, []string{"Culinary Creations"}, []string{"Cooking", "Lifestyle"}, time.Date(2023, time.January, 15, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test Tech Innovations", "978-0-89765-123-4", 200, 3, 8, []string{"David Green", "Eva White"}, []string{"TechBooks Publishing"}, []string{"Technology", "Innovation"}, time.Date(2022, time.April, 7, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test Ancient Legends", "978-1-23456-789-1", 300, 2, 7, []string{"Nina Scott"}, []string{"History Publishing"}, []string{"History", "Legends"}, time.Date(2021, time.October, 12, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test In the Depths of the Ocean", "978-0-98765-432-3", 220, 1, 3, []string{"Jack Carter"}, []string{"Oceanic Press"}, []string{"Adventure", "Oceanography"}, time.Date(2022, time.February, 18, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test Mystic Forest", "978-1-11223-334-5", 380, 2, 5, []string{"Laura Mills"}, []string{"Fiction Publishers"}, []string{"Fantasy", "Adventure"}, time.Date(2020, time.August, 20, 0, 0, 0, 0, time.UTC)),
+		NewBook("conflict", "Test Conflict", "978-1-23456-214-0", 0, 1, 1, []string{"Con Doe"}, []string{"Conflict"}, []string{"Conflict"}, time.Date(1999, time.May, 12, 0, 0, 0, 0, time.UTC)),
 	}
 )
 
@@ -575,6 +575,40 @@ func (ts *TestSuite) TestGetAllBooks() {
 				MaxPublishedAt: ptr(time.Date(2031, time.January, 1, 0, 0, 0, 0, time.UTC)),
 			},
 			paginator:        Paginator{Page: 1, PageSize: 10},
+			expectedIDs:      []string{},
+			expectedMetadata: Metadata{},
+			expectedCount:    0,
+			expectError:      false,
+		},
+		{
+			name: "FilterByMinCopies",
+			filter: BookFilter{
+				Title:     ptr("Test"),
+				MinCopies: ptr(5),
+			},
+			paginator: Paginator{Page: 1, PageSize: 2},
+			expectedIDs: []string{
+				testBooksIDs[0].(primitive.ObjectID).Hex(),
+				testBooksIDs[4].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  1,
+				PageSize:     2,
+				FirstPage:    1,
+				LastPage:     3,
+				TotalRecords: 6,
+			},
+			expectedCount: 2,
+			expectError:   false,
+		},
+		{
+			name: "FilterByBorrowedCopiesRange",
+			filter: BookFilter{
+				Title:             ptr("Test"),
+				MinBorrowedCopies: ptr(2),
+				MaxBorrowedCopies: ptr(4),
+			},
+			paginator:        Paginator{Page: 1, PageSize: 3},
 			expectedIDs:      []string{},
 			expectedMetadata: Metadata{},
 			expectedCount:    0,
