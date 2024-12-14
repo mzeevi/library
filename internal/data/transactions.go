@@ -1,172 +1,306 @@
 package data
 
 import (
-	"encoding/csv"
+	"context"
+	"errors"
 	"fmt"
-	"github.com/xuri/excelize/v2"
-	"os"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"strings"
-	"sync"
+	"time"
+)
+
+var (
+	errCreatingQueryFilter = errors.New("filter query builder failed")
 )
 
 const (
-	errWriterNotInitialized = "writer is not initialized"
-	errCreatingWriter       = "cannot create writer"
-	errWritingRecord        = "cannot write record"
-	errClosingWriter        = "cannot close writer"
+	TransactionStatusBorrowed transactionStatus = "borrowed"
+	TransactionStatusReturned transactionStatus = "returned"
 )
 
-const (
-	CSVOutputFormat   = TransactionOutputType("csv")
-	EXLAMOutputFormat = TransactionOutputType("xlam")
-	XLSMOutputFormat  = TransactionOutputType("xlsm")
-	XLSXOutputFormat  = TransactionOutputType("xlsx")
-	XLTMOutputFormat  = TransactionOutputType("xltm")
-	XLTXOutputFormat  = TransactionOutputType("xltx")
-)
+type transactionStatus string
 
-const (
-	excelSheetName   = "transactions"
-	nonExistentSheet = -1
-)
-
-type TransactionOutputType string
-
-type TransactionsOutput interface {
-	// CreateWriter initializes a writer and creates or opens the specified file.
-	CreateWriter(filename, format string) error
-
-	// WriteRecord writes a single record to an output file.
-	WriteRecord(record []string) error
-
-	// CloseWriter closes the file writer.
-	CloseWriter() error
+type Transaction struct {
+	ID         string            `bson:"_id,omitempty" json:"id,omitempty"`
+	PatronID   string            `bson:"patron_id" json:"patron_id"`
+	BookID     string            `bson:"book_id" json:"book_id"`
+	BorrowedAt time.Time         `bson:"borrowed_at" json:"borrowed_at"`
+	DueDate    time.Time         `bson:"due_date" json:"due_date"`
+	ReturnedAt time.Time         `bson:"returned_at,omitempty" json:"returned_at,omitempty"`
+	Status     transactionStatus `bson:"status" json:"status"`
+	CreatedAt  time.Time         `bson:"created_at" json:"created_at"`
+	UpdatedAt  time.Time         `bson:"updated_at" json:"updated_at"`
+	Version    int32             `json:"version,omitempty"`
 }
 
-type CSVTransactionOutput struct {
-	file   *os.File
-	mutex  *sync.Mutex
-	writer *csv.Writer
+type TransactionFilter struct {
+	ID            *string            `json:"id,omitempty"`
+	PatronID      *string            `json:"patron_id,omitempty"`
+	BookID        *string            `json:"book_id,omitempty"`
+	MinBorrowedAt *time.Time         `json:"min_borrowed_at,omitempty"`
+	MaxBorrowedAt *time.Time         `json:"max_borrowed_at,omitempty"`
+	MinDueDate    *time.Time         `json:"min_due_date,omitempty"`
+	MaxDueDate    *time.Time         `json:"max_due_date,omitempty"`
+	ReturnedAt    *time.Time         `json:"returned_at,omitempty"`
+	Status        *transactionStatus `json:"status,omitempty"`
+	MinCreatedAt  *time.Time         `json:"min_created_at,omitempty"`
+	MaxCreatedAt  *time.Time         `json:"max_created_at,omitempty"`
+	MinUpdatedAt  *time.Time         `json:"min_updated_at,omitempty"`
+	MaxUpdatedAt  *time.Time         `json:"max_updated_at,omitempty"`
+	Version       *int32             `json:"version,omitempty"`
 }
 
-type ExcelTransactionOutput struct {
-	f         *excelize.File
-	filename  string
-	sheetName string
+type TransactionModel struct {
+	Client     *mongo.Client
+	Database   string
+	Collection string
 }
 
-// addFormatSuffix ensures the given filename ends with the appropriate file format suffix.
-// If the suffix is not present, it appends the format as a suffix to the filename.
-func addFormatSuffix(filename, format string) string {
-	if !strings.HasSuffix(filename, format) {
-		return fmt.Sprintf("%s.%s", filename, format)
+// NewTransaction is a constructor for Transaction.
+func NewTransaction(id, patronID, bookID string, borrowedAt, dueDate time.Time, status transactionStatus) *Transaction {
+	now := time.Now()
+	return &Transaction{
+		ID:         id,
+		PatronID:   patronID,
+		BookID:     bookID,
+		BorrowedAt: borrowedAt,
+		DueDate:    dueDate,
+		Status:     status,
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+}
+
+// buildTransactionFilter constructs a filter query for filtering transactions.
+func buildTransactionFilter(filter TransactionFilter) (bson.M, error) {
+	query := bson.M{}
+
+	if filter.ID != nil {
+		id, err := primitive.ObjectIDFromHex(*filter.ID)
+		if err != nil {
+			return query, err
+		}
+		query[idTag] = id
+	}
+	if filter.PatronID != nil {
+		query[patronIDTag] = *filter.PatronID
+	}
+	if filter.BookID != nil {
+		query[bookIDTag] = *filter.BookID
+	}
+	if filter.Status != nil {
+		query[statusTag] = *filter.Status
+	}
+	if filter.ReturnedAt != nil {
+		query[returnedAtTag] = *filter.ReturnedAt
 	}
 
-	return filename
+	if filter.MinBorrowedAt != nil || filter.MaxBorrowedAt != nil {
+		borrowedAtRange := bson.M{}
+		if filter.MinBorrowedAt != nil {
+			borrowedAtRange["$gte"] = *filter.MinBorrowedAt
+		}
+		if filter.MaxBorrowedAt != nil {
+			borrowedAtRange["$lte"] = *filter.MaxBorrowedAt
+		}
+		query[borrowedAtTag] = borrowedAtRange
+	}
+
+	if filter.MinDueDate != nil || filter.MaxDueDate != nil {
+		dueDateRange := bson.M{}
+		if filter.MinDueDate != nil {
+			dueDateRange["$gte"] = *filter.MinDueDate
+		}
+		if filter.MaxDueDate != nil {
+			dueDateRange["$lte"] = *filter.MaxDueDate
+		}
+		query[dueDateTag] = dueDateRange
+	}
+
+	if filter.MinCreatedAt != nil || filter.MaxCreatedAt != nil {
+		createdAtRange := bson.M{}
+		if filter.MinCreatedAt != nil {
+			createdAtRange["$gte"] = *filter.MinCreatedAt
+		}
+		if filter.MaxCreatedAt != nil {
+			createdAtRange["$lte"] = *filter.MaxCreatedAt
+		}
+		query[createdAt] = createdAtRange
+	}
+
+	if filter.MinUpdatedAt != nil || filter.MaxUpdatedAt != nil {
+		updatedAtRange := bson.M{}
+		if filter.MinUpdatedAt != nil {
+			updatedAtRange["$gte"] = *filter.MinUpdatedAt
+		}
+		if filter.MaxUpdatedAt != nil {
+			updatedAtRange["$lte"] = *filter.MaxUpdatedAt
+		}
+		query[updatedAtTag] = updatedAtRange
+	}
+
+	if filter.Version != nil {
+		query[versionTag] = *filter.Version
+	}
+
+	return query, nil
 }
 
-func (c *CSVTransactionOutput) CreateWriter(filename, format string) error {
-	f, err := os.Create(addFormatSuffix(filename, format))
+// buildTransactionUpdater constructs an update document for updating a Transaction.
+func buildTransactionUpdater(transaction *Transaction) bson.D {
+	updateFields := bson.D{
+		{Key: dueDateTag, Value: transaction.DueDate},
+		{Key: returnedAtTag, Value: transaction.ReturnedAt},
+		{Key: statusTag, Value: transaction.Status},
+	}
+
+	updateFields = append(updateFields, bson.E{Key: updatedAtTag, Value: time.Now()})
+
+	update := bson.D{
+		{Key: "$set", Value: updateFields},
+		{Key: "$inc", Value: bson.D{{Key: versionTag, Value: 1}}},
+	}
+
+	return update
+}
+
+// Insert inserts a new Transaction into the database.
+func (t TransactionModel) Insert(ctx context.Context, transaction *Transaction) (string, error) {
+	coll := t.Client.Database(t.Database).Collection(t.Collection)
+
+	now := time.Now()
+	transaction.CreatedAt = now
+	transaction.UpdatedAt = now
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	res, err := coll.InsertOne(ctx, transaction)
 	if err != nil {
-		return fmt.Errorf("%v: %v", errCreatingWriter, err)
-	}
-
-	c.file = f
-	c.writer = csv.NewWriter(f)
-	c.mutex = &sync.Mutex{}
-
-	return nil
-}
-
-func (c *CSVTransactionOutput) WriteRecord(record []string) error {
-	if c.writer == nil {
-		return fmt.Errorf("%v: %v", errWritingRecord, errWriterNotInitialized)
-	}
-
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	return c.writer.Write(record)
-}
-
-func (c *CSVTransactionOutput) CloseWriter() error {
-	if c.writer != nil {
-		c.mutex.Lock()
-		c.writer.Flush()
-		c.mutex.Unlock()
-	}
-
-	if c.file != nil {
-		if err := c.file.Close(); err != nil {
-			return fmt.Errorf("%v: %v", errClosingWriter, err)
+		switch {
+		case strings.Contains(err.Error(), "E11000 duplicate key error collection"):
+			return "", ErrDuplicateID
+		default:
+			return "", err
 		}
 	}
 
-	return nil
+	return res.InsertedID.(primitive.ObjectID).Hex(), nil
 }
 
-func (c *ExcelTransactionOutput) CreateWriter(filename, format string) error {
-	var err error
+// Get retrieves a single Transaction from the database matching an optional filter.
+func (t TransactionModel) Get(ctx context.Context, filter TransactionFilter) (*Transaction, error) {
+	coll := t.Client.Database(t.Database).Collection(t.Collection)
 
-	normalizedFilename := addFormatSuffix(filename, format)
-	if c.f, err = excelize.OpenFile(normalizedFilename); err != nil {
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("%v: %v", errCreatingWriter, err)
-		}
-
-		c.f = excelize.NewFile()
+	filterQuery, err := buildTransactionFilter(filter)
+	if err != nil {
+		return nil, fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
 
-	i, err := c.f.GetSheetIndex(excelSheetName)
+	transaction := &Transaction{}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	if err = coll.FindOne(ctx, filterQuery).Decode(transaction); err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrDocumentNotFound
+		}
+		return nil, err
+	}
+
+	return transaction, nil
+}
+
+// GetAll retrieves all Transactions from the database matching an optional filter and paginator.
+func (t TransactionModel) GetAll(ctx context.Context, filter TransactionFilter, paginator Paginator) ([]Transaction, Metadata, error) {
+	coll := t.Client.Database(t.Database).Collection(t.Collection)
+
+	transactions := make([]Transaction, 0)
+
+	findOpt := options.Find().SetLimit(paginator.limit()).SetSkip(paginator.offset())
+	filterQuery, err := buildTransactionFilter(filter)
+	if err != nil {
+		return transactions, Metadata{}, fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	totalRecords, err := coll.CountDocuments(ctx, filterQuery)
+	if err != nil {
+		return transactions, Metadata{}, errCreatingQueryFilter
+	}
+
+	cursor, err := coll.Find(ctx, filterQuery, findOpt)
+	if err != nil {
+		return transactions, Metadata{}, err
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var transaction Transaction
+		if err = cursor.Decode(&transaction); err != nil {
+			return transactions, Metadata{}, err
+		}
+
+		transactions = append(transactions, transaction)
+	}
+
+	metadata := calculateMetadata(totalRecords, paginator.Page, paginator.PageSize)
+
+	return transactions, metadata, nil
+}
+
+// Update updates a Transaction's details in the database.
+func (t TransactionModel) Update(ctx context.Context, filter TransactionFilter, transaction *Transaction) error {
+	coll := t.Client.Database(t.Database).Collection(t.Collection)
+
+	update := buildTransactionUpdater(transaction)
+
+	filter.Version = &transaction.Version
+	filterQuery, err := buildTransactionFilter(filter)
+	if err != nil {
+		return fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	result, err := coll.UpdateOne(ctx, filterQuery, update)
 	if err != nil {
 		return err
 	}
 
-	if i == nonExistentSheet {
-		_, err = c.f.NewSheet(excelSheetName)
-		if err != nil {
-			return err
-		}
+	if result.MatchedCount == 0 {
+		return ErrEditConflict
 	}
-
-	c.sheetName = excelSheetName
-	c.filename = normalizedFilename
 
 	return nil
 }
 
-func (c *ExcelTransactionOutput) WriteRecord(record []string) error {
-	if c.f == nil {
-		return fmt.Errorf("%v: %v", errWritingRecord, errWriterNotInitialized)
-	}
+// Delete deletes a Transaction from the database by ID.
+func (t TransactionModel) Delete(ctx context.Context, filter TransactionFilter) error {
+	coll := t.Client.Database(t.Database).Collection(t.Collection)
 
-	rows, err := c.f.GetRows(c.sheetName)
+	filterQuery, err := buildTransactionFilter(filter)
 	if err != nil {
-		return fmt.Errorf("%v: %v", errWritingRecord, err)
-	}
-	nextRow := len(rows) + 1
-
-	for colIndex, value := range record {
-		cell := fmt.Sprintf("%s%d", string(rune('A'+colIndex)), nextRow)
-		if err = c.f.SetCellValue(c.sheetName, cell, value); err != nil {
-			return fmt.Errorf("%v: %v", errWritingRecord, err)
-		}
+		return fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
 
-	if err = c.f.SaveAs(c.filename); err != nil {
-		return fmt.Errorf("%v: %v", errWritingRecord, err)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	result, err := coll.DeleteOne(ctx, filterQuery)
+	if err != nil {
+		return err
 	}
 
-	return nil
-}
-
-func (c *ExcelTransactionOutput) CloseWriter() error {
-	if c.f == nil {
-		return fmt.Errorf("%v: %v", errClosingWriter, errWriterNotInitialized)
-	}
-
-	if err := c.f.Close(); err != nil {
-		return fmt.Errorf("%v: %v", errClosingWriter, err)
+	if result.DeletedCount == 0 {
+		return ErrDocumentNotFound
 	}
 
 	return nil
