@@ -1,4 +1,4 @@
-package generate
+package testhelpers
 
 import (
 	"fmt"
@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// generateISBN generates a valid ISBN-13.
-func generateISBN() string {
+// GenerateISBN generates a valid ISBN-13.
+func GenerateISBN() string {
 	source := rand.NewSource(time.Now().UnixNano())
 	r := rand.New(source)
 

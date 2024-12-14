@@ -1,257 +1,321 @@
 package data
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/google/uuid"
-)
-
-const (
-	errBookAlreadyBorrowed = "book is already borrowed"
-	errNonexistentBook     = "book cannot be found"
 )
 
 type Book struct {
-	ID             uint32
-	Pages          int
-	Edition        int
-	Borrowed       bool
-	Published      time.Time
-	CreatedAt      time.Time
-	BorrowDuration time.Duration
-	Title          string
-	ISBN           string
-	Authors        []string
-	Publishers     []string
-	Genres         []string
-	Version        int32
-	mu             sync.Mutex
+	ID          string    `bson:"_id,omitempty" json:"id,omitempty"`
+	Pages       int       `bson:"pages" json:"pages"`
+	Edition     int       `bson:"edition" json:"edition"`
+	PublishedAt time.Time `bson:"published_at" json:"published_at"`
+	CreatedAt   time.Time `bson:"created_at" json:"created_at"`
+	UpdatedAt   time.Time `bson:"updated_at" json:"updated_at"`
+	Title       string    `bson:"title" json:"title"`
+	ISBN        string    `bson:"isbn" json:"isbn"`
+	Authors     []string  `bson:"authors" json:"authors"`
+	Publishers  []string  `bson:"publishers" json:"publishers"`
+	Genres      []string  `bson:"genres" json:"genres"`
+	Version     int32     `bson:"version" json:"-"`
 }
 
-// SearchCriteria struct holds optional search filters for each field of the Book struct
-type SearchCriteria struct {
-	Title        *string
-	ISBN         *string
-	Authors      *[]string
-	Publishers   *[]string
-	Genres       *[]string
-	Borrowed     *bool
-	MinPages     *int
-	MaxPages     *int
-	MinEdition   *int
-	MaxEdition   *int
-	MinPublished *time.Time
-	MaxPublished *time.Time
+type BookFilter struct {
+	ID             *string    `json:"id,omitempty"`
+	MinPages       *int       `json:"min_pages,omitempty"`
+	MaxPages       *int       `json:"max_pages,omitempty"`
+	MinEdition     *int       `json:"min_edition,omitempty"`
+	MaxEdition     *int       `json:"max_edition,omitempty"`
+	MinPublishedAt *time.Time `json:"min_published_at,omitempty"`
+	MaxPublishedAt *time.Time `json:"max_published_at,omitempty"`
+	MinCreatedAt   *time.Time `json:"min_created_at,omitempty"`
+	MaxCreatedAt   *time.Time `json:"max_created_at,omitempty"`
+	MinUpdatedAt   *time.Time `json:"min_updated_at,omitempty"`
+	MaxUpdatedAt   *time.Time `json:"max_updated_at,omitempty"`
+	Title          *string    `json:"title,omitempty"`
+	ISBN           *string    `json:"isbn,omitempty"`
+	Authors        []string   `json:"authors,omitempty"`
+	Publishers     []string   `json:"publishers,omitempty"`
+	Genres         []string   `json:"genres,omitempty"`
+	Version        *int32     `json:"version,omitempty"`
+}
+
+type BookModel struct {
+	Client     *mongo.Client
+	Database   string
+	Collection string
 }
 
 // NewBook creates a new book with the provided details.
-func NewBook(title string, isbn string, authors []string, publishers []string, genres []string, pages int, edition int, published time.Time, borrowDuration time.Duration) *Book {
+func NewBook(id string, title, isbn string, pages, edition int, authors, publishers, genres []string, publishedAt time.Time) *Book {
+	now := time.Now()
 	return &Book{
-		ID:             uuid.New().ID(),
-		Title:          title,
-		ISBN:           isbn,
-		Authors:        authors,
-		Publishers:     publishers,
-		Genres:         genres,
-		Pages:          pages,
-		Edition:        edition,
-		Published:      published,
-		BorrowDuration: borrowDuration,
-		CreatedAt:      time.Now(),
-		Borrowed:       false,
+		ID:          id,
+		Title:       title,
+		ISBN:        isbn,
+		Pages:       pages,
+		Edition:     edition,
+		Authors:     authors,
+		Publishers:  publishers,
+		Genres:      genres,
+		PublishedAt: publishedAt,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 }
 
-// UpdateBook updates the book's details based on the provided parameters.
-func (b *Book) UpdateBook(title *string, isbn *string, authors *[]string, publishers *[]string, genres *[]string, pages *int, edition *int, published *time.Time, borrowDuration *time.Duration) {
-	if title != nil {
-		b.Title = *title
+// buildBookFilter constructs a filter query for filtering books.
+func buildBookFilter(filter BookFilter) (bson.M, error) {
+	query := bson.M{}
+
+	if filter.ID != nil {
+		id, err := primitive.ObjectIDFromHex(*filter.ID)
+		if err != nil {
+			return query, err
+		}
+		query[idTag] = id
+	}
+	if filter.MinPages != nil || filter.MaxPages != nil {
+		pagesRange := bson.M{}
+		if filter.MinPages != nil {
+			pagesRange["$gte"] = *filter.MinPages
+		}
+		if filter.MaxPages != nil {
+			pagesRange["$lte"] = *filter.MaxPages
+		}
+		query[pagesTag] = pagesRange
+	}
+	if filter.MinEdition != nil || filter.MaxEdition != nil {
+		editionRange := bson.M{}
+		if filter.MinEdition != nil {
+			editionRange["$gte"] = *filter.MinEdition
+		}
+		if filter.MaxEdition != nil {
+			editionRange["$lte"] = *filter.MaxEdition
+		}
+		query[editionTag] = editionRange
+	}
+	if filter.MinPublishedAt != nil || filter.MaxPublishedAt != nil {
+		publishedAtRange := bson.M{}
+		if filter.MinPublishedAt != nil {
+			publishedAtRange["$gte"] = *filter.MinPublishedAt
+		}
+		if filter.MaxPublishedAt != nil {
+			publishedAtRange["$lte"] = *filter.MaxPublishedAt
+		}
+		query[publishedAtTag] = publishedAtRange
+	}
+	if filter.MinCreatedAt != nil || filter.MaxCreatedAt != nil {
+		createdAtRange := bson.M{}
+		if filter.MinCreatedAt != nil {
+			createdAtRange["$gte"] = *filter.MinCreatedAt
+		}
+		if filter.MaxCreatedAt != nil {
+			createdAtRange["$lte"] = *filter.MaxCreatedAt
+		}
+		query[createdAtTag] = createdAtRange
+	}
+	if filter.MinUpdatedAt != nil || filter.MaxUpdatedAt != nil {
+		updatedAtRange := bson.M{}
+		if filter.MinUpdatedAt != nil {
+			updatedAtRange["$gte"] = *filter.MinUpdatedAt
+		}
+		if filter.MaxUpdatedAt != nil {
+			updatedAtRange["$lte"] = *filter.MaxUpdatedAt
+		}
+		query[updatedAtTag] = updatedAtRange
+	}
+	if filter.Title != nil {
+		query[titleTag] = bson.M{"$regex": *filter.Title, "$options": "i"}
+	}
+	if filter.ISBN != nil {
+		query[isbnTag] = *filter.ISBN
+	}
+	if len(filter.Authors) > 0 {
+		query[authorsTag] = bson.M{"$in": filter.Authors}
+	}
+	if len(filter.Publishers) > 0 {
+		query[publishersTag] = bson.M{"$in": filter.Publishers}
+	}
+	if len(filter.Genres) > 0 {
+		query[genresTag] = bson.M{"$in": filter.Genres}
+	}
+	if filter.Version != nil {
+		query[versionTag] = *filter.Version
 	}
 
-	if isbn != nil {
-		b.ISBN = *isbn
-	}
-
-	if authors != nil {
-		b.Authors = *authors
-	}
-
-	if publishers != nil {
-		b.Publishers = *publishers
-	}
-
-	if genres != nil {
-		b.Genres = *genres
-	}
-
-	if pages != nil {
-		b.Pages = *pages
-	}
-
-	if edition != nil {
-		b.Edition = *edition
-	}
-
-	if published != nil {
-		b.Published = *published
-	}
-
-	if borrowDuration != nil {
-		b.BorrowDuration = *borrowDuration
-	}
+	return query, nil
 }
 
-// markBookAsBorrowed marks the book as currently borrowed.
-func (b *Book) markBookAsBorrowed() error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	if b.Borrowed {
-		return errors.New(errBookAlreadyBorrowed)
+// buildBookUpdater constructs an update document for updating a Book.
+func buildBookUpdater(book *Book) bson.D {
+	updateFields := bson.D{
+		{Key: "title", Value: book.Title},
+		{Key: "isbn", Value: book.ISBN},
+		{Key: "pages", Value: book.Pages},
+		{Key: "edition", Value: book.Edition},
+		{Key: "published_at", Value: book.PublishedAt},
+		{Key: "authors", Value: book.Authors},
+		{Key: "publishers", Value: book.Publishers},
+		{Key: "genres", Value: book.Genres},
 	}
 
-	b.Borrowed = true
+	updateFields = append(updateFields, bson.E{Key: "updated_at", Value: time.Now()})
+
+	update := bson.D{
+		{Key: "$set", Value: updateFields},
+		{Key: "$inc", Value: bson.D{{Key: "version", Value: 1}}},
+	}
+
+	return update
+}
+
+// Insert inserts a new Book into the database.
+func (b BookModel) Insert(ctx context.Context, book *Book) (string, error) {
+	coll := b.Client.Database(b.Database).Collection(b.Collection)
+
+	book.CreatedAt = time.Now()
+	book.UpdatedAt = time.Now()
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	res, err := coll.InsertOne(ctx, book)
+	if err != nil {
+		switch {
+		case strings.Contains(err.Error(), "E11000 duplicate key error collection"):
+			return "", ErrDuplicateID
+		default:
+			return "", err
+		}
+	}
+
+	if oid, ok := res.InsertedID.(primitive.ObjectID); ok {
+		return oid.Hex(), nil
+	}
+
+	return res.InsertedID.(string), nil
+}
+
+// Get retrieves a single Book from the database matching an optional filter.
+func (b BookModel) Get(ctx context.Context, filter BookFilter) (*Book, error) {
+	coll := b.Client.Database(b.Database).Collection(b.Collection)
+
+	filterQuery, err := buildBookFilter(filter)
+	if err != nil {
+		return nil, fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
+	}
+
+	book := &Book{}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	err = coll.FindOne(ctx, filterQuery).Decode(book)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrDocumentNotFound
+		}
+		return nil, err
+	}
+
+	return book, nil
+}
+
+// GetAll retrieves all mockBooks from the database matching an optional filter and paginator.
+func (b BookModel) GetAll(ctx context.Context, filter BookFilter, paginator Paginator) ([]Book, Metadata, error) {
+	coll := b.Client.Database(b.Database).Collection(b.Collection)
+
+	books := make([]Book, 0)
+
+	findOpt := options.Find().SetLimit(paginator.limit()).SetSkip(paginator.offset())
+	filterQuery, err := buildBookFilter(filter)
+	if err != nil {
+		return nil, Metadata{}, fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	totalRecords, err := coll.CountDocuments(ctx, filterQuery)
+	if err != nil {
+		return books, Metadata{}, errCreatingQueryFilter
+	}
+
+	cursor, err := coll.Find(ctx, filterQuery, findOpt)
+	if err != nil {
+		return books, Metadata{}, err
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var book Book
+		if err = cursor.Decode(&book); err != nil {
+			return books, Metadata{}, err
+		}
+
+		books = append(books, book)
+	}
+
+	metadata := calculateMetadata(totalRecords, paginator.Page, paginator.PageSize)
+
+	return books, metadata, nil
+}
+
+// Update updates a Book's details in the database.
+func (b BookModel) Update(ctx context.Context, filter BookFilter, book *Book) error {
+	coll := b.Client.Database(b.Database).Collection(b.Collection)
+
+	update := buildBookUpdater(book)
+
+	filter.Version = &book.Version
+	filterQuery, err := buildBookFilter(filter)
+	if err != nil {
+		return fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	result, err := coll.UpdateOne(ctx, filterQuery, update)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return ErrEditConflict
+	}
 
 	return nil
 }
 
-// markBookAsNotBorrowed marks the book as not borrowed.
-func (b *Book) markBookAsNotBorrowed() {
-	b.Borrowed = false
-}
+// Delete deletes a Book from the database by ID.
+func (b BookModel) Delete(ctx context.Context, filter BookFilter) error {
+	coll := b.Client.Database(b.Database).Collection(b.Collection)
 
-// getBookByTitle retrieves a book in the given slice by its title.
-func getBookByTitle(title string, books []*Book) (*Book, error) {
-	for i := range books {
-		if title == books[i].Title {
-			return books[i], nil
-		}
+	filterQuery, err := buildBookFilter(filter)
+	if err != nil {
+		return fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
 
-	return nil, errors.New(errNonexistentBook)
-}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
-// SearchBooks filters the given books slice based on the provided criteria.
-func SearchBooks(books []*Book, criteria SearchCriteria) []*Book {
-	var results []*Book
-
-	for i := range books {
-		if matchesAllCriteria(books[i], criteria) {
-			results = append(results, books[i])
-		}
+	result, err := coll.DeleteOne(ctx, filterQuery)
+	if err != nil {
+		return err
 	}
 
-	return results
-}
-
-// matchesAllCriteria checks if a book matches all the search criteria.
-func matchesAllCriteria(book *Book, criteria SearchCriteria) bool {
-	if criteria.Title != nil && len(*criteria.Title) > 0 {
-		if !checkTitle(book.Title, criteria.Title) {
-			return false
-		}
+	if result.DeletedCount == 0 {
+		return ErrDocumentNotFound
 	}
 
-	if criteria.ISBN != nil && len(*criteria.ISBN) > 0 {
-		if !checkISBN(book.ISBN, criteria.ISBN) {
-			return false
-		}
-	}
-
-	if criteria.Authors != nil {
-		if !checkStringSlice(book.Authors, criteria.Authors) {
-			return false
-		}
-	}
-
-	if criteria.Publishers != nil {
-		if !checkStringSlice(book.Publishers, criteria.Publishers) {
-			return false
-		}
-	}
-
-	if criteria.Genres != nil {
-		if !checkStringSlice(book.Genres, criteria.Genres) {
-			return false
-		}
-	}
-
-	if criteria.Borrowed != nil {
-		if !checkBorrowed(book.Borrowed, criteria.Borrowed) {
-			return false
-		}
-	}
-
-	if criteria.MinPages != nil && criteria.MaxPages != nil {
-		if !checkPages(book.Pages, criteria.MinPages, criteria.MaxPages) {
-			return false
-		}
-	}
-
-	if criteria.MinEdition != nil && criteria.MaxEdition != nil {
-		if !checkEdition(book.Edition, criteria.MinEdition, criteria.MaxEdition) {
-			return false
-
-		}
-	}
-
-	if criteria.MinPublished != nil && criteria.MaxPublished != nil {
-		if !checkPublished(book.Published, criteria.MinPublished, criteria.MaxPublished) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// contains helper function checks if a slice contains a specific string
-func contains(slice []string, str string) bool {
-	for _, item := range slice {
-		if item == str {
-			return true
-		}
-	}
-	return false
-}
-
-// checkTitle checks if the book's title matches the search criteria.
-func checkTitle(bookTitle string, title *string) bool {
-	return strings.Contains(bookTitle, *title)
-}
-
-// checkISBN checks if the book's ISBN matches the search criteria.
-func checkISBN(bookISBN string, isbn *string) bool {
-	return bookISBN == *isbn
-}
-
-// checkStringSlice checks if any element of the book's string slice matches the search criteria.
-func checkStringSlice(s []string, criteriaSlice *[]string) bool {
-	for _, criteria := range *criteriaSlice {
-		return contains(s, criteria)
-	}
-
-	return true
-}
-
-// checkBorrowed checks if the book's borrowed status matches the search criteria.
-func checkBorrowed(bookBorrowed bool, borrowed *bool) bool {
-	return bookBorrowed == *borrowed
-}
-
-// checkPages checks if the book's pages match the search criteria.
-func checkPages(bookPages int, minPages, maxPages *int) bool {
-	return bookPages >= *minPages && bookPages <= *maxPages
-}
-
-// checkEdition checks if the book's edition matches the search criteria.
-func checkEdition(bookEdition int, minEdition, maxEdition *int) bool {
-	return bookEdition >= *minEdition && bookEdition <= *maxEdition
-}
-
-// checkPublished checks if the book's published date matches the search criteria.
-func checkPublished(bookPublished time.Time, minPublished, maxPublished *time.Time) bool {
-	return !bookPublished.Before(*minPublished) && !bookPublished.After(*maxPublished)
+	return nil
 }

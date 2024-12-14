@@ -1,1113 +1,714 @@
 package data
 
 import (
-	"errors"
-	"reflect"
+	"github.com/stretchr/testify/assert"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"testing"
 	"time"
 )
 
-func TestMarkBookAsBorrowed(t *testing.T) {
+var (
+	testBooksIDs []interface{}
+	testBooks    = []interface{}{
+		NewBook("", "Test The Great Adventure", "978-1-23456-789-0", 300, 1, []string{"John Doe"}, []string{"Fiction Press"}, []string{"Adventure", "Fantasy"}, time.Date(2023, time.May, 12, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test A Journey Beyond", "978-0-98765-432-1", 350, 2, []string{"Alice Johnson"}, []string{"Imagination Books"}, []string{"Fantasy", "Adventure"}, time.Date(2022, time.June, 5, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test Science Explained", "978-0-11223-456-7", 400, 1, []string{"Bob Smith"}, []string{"Knowledge Publications"}, []string{"Non-fiction", "Science"}, time.Date(2021, time.September, 18, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test The Mystery of Shadows", "978-1-22334-567-8", 250, 1, []string{"Claire Adams"}, []string{"Mystery House"}, []string{"Mystery", "Thriller"}, time.Date(2020, time.November, 25, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test The Last Sunset", "978-1-23345-678-9", 500, 1, []string{"Michael Young"}, []string{"Sunset Publishing"}, []string{"Romance", "Drama"}, time.Date(2021, time.March, 2, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test Cooking Secrets", "978-0-54321-987-6", 150, 1, []string{"Sarah Lee"}, []string{"Culinary Creations"}, []string{"Cooking", "Lifestyle"}, time.Date(2023, time.January, 15, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test Tech Innovations", "978-0-89765-123-4", 200, 3, []string{"David Green", "Eva White"}, []string{"TechBooks Publishing"}, []string{"Technology", "Innovation"}, time.Date(2022, time.April, 7, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test Ancient Legends", "978-1-23456-789-0", 300, 2, []string{"Nina Scott"}, []string{"History Publishing"}, []string{"History", "Legends"}, time.Date(2021, time.October, 12, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test In the Depths of the Ocean", "978-0-98765-432-1", 220, 1, []string{"Jack Carter"}, []string{"Oceanic Press"}, []string{"Adventure", "Oceanography"}, time.Date(2022, time.February, 18, 0, 0, 0, 0, time.UTC)),
+		NewBook("", "Test Mystic Forest", "978-1-11223-334-5", 380, 2, []string{"Laura Mills"}, []string{"Fiction Publishers"}, []string{"Fantasy", "Adventure"}, time.Date(2020, time.August, 20, 0, 0, 0, 0, time.UTC)),
+		NewBook("conflict", "Test Conflict", "978-1-23456-214-0", 0, 1, []string{"Con Doe"}, []string{"Conflict"}, []string{"Conflict"}, time.Date(1999, time.May, 12, 0, 0, 0, 0, time.UTC)),
+	}
+)
+
+// populateBooksInDB inserts test Books into the DB.
+func (ts *TestSuite) populateBooksInDB() error {
+	client := ts.models.Books.Client
+	coll := client.Database(ts.models.Books.Database).Collection(ts.models.Books.Collection)
+
+	res, err := coll.InsertMany(ts.ctx, testBooks)
+	if err != nil {
+		return err
+	}
+
+	testBooksIDs = res.InsertedIDs
+
+	return nil
+}
+
+// deleteBooksFromDB deletes test Books from the DB.
+func (ts *TestSuite) deleteBooksFromDB(filter BookFilter) error {
+	client := ts.models.Books.Client
+	coll := client.Database(ts.models.Books.Database).Collection(ts.models.Books.Collection)
+
+	queryFilter, err := buildBookFilter(filter)
+	if err != nil {
+		return err
+	}
+
+	_, err = coll.DeleteMany(ts.ctx, queryFilter)
+
+	return err
+}
+
+func (ts *TestSuite) TestBookInsert() {
+	t := ts.T()
+
 	tests := []struct {
-		name                  string
-		book                  *Book
-		expectedError         error
-		initialBorrowedStatus bool
+		name        string
+		book        Book
+		expectError bool
 	}{
 		{
-			name:                  "AlreadyBorrowedBook",
-			book:                  &Book{Title: "Go Programming", Borrowed: true},
-			expectedError:         errors.New(errBookAlreadyBorrowed),
-			initialBorrowedStatus: true,
+			name: "ValidBook",
+			book: Book{
+				Title:       "Valid",
+				Pages:       10000000,
+				Edition:     10000000,
+				PublishedAt: time.Date(1900, time.August, 20, 0, 0, 0, 0, time.UTC),
+				Authors:     []string{"Author 1"},
+				Publishers:  []string{"Publisher 1"},
+				Genres:      []string{"Fiction"},
+			},
+			expectError: false,
 		},
 		{
-			name:                  "SuccessfullyBorrowBook",
-			book:                  &Book{Title: "Go Programming", Borrowed: false},
-			expectedError:         nil,
-			initialBorrowedStatus: false,
+			name: "BookWithConflictingID",
+			book: Book{
+				ID:          "conflict",
+				Title:       "Conflicting Book",
+				Pages:       100,
+				Edition:     1,
+				PublishedAt: time.Now(),
+				Authors:     []string{"Author 3"},
+				Publishers:  []string{"Publisher 3"},
+				Genres:      []string{"Fantasy"},
+			},
+			expectError: true,
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.book.Borrowed != tt.initialBorrowedStatus {
-				t.Errorf("Expected initial Borrowed status to be %v, but got %v", tt.initialBorrowedStatus, tt.book.Borrowed)
-			}
-
-			err := tt.book.markBookAsBorrowed()
-
-			if err != nil && err.Error() != tt.expectedError.Error() {
-				t.Errorf("Expected error %v, got %v", tt.expectedError, err)
-			}
-
-			if err != nil {
-				if tt.book.Borrowed != tt.initialBorrowedStatus {
-					t.Errorf("Expected book Borrowed status to remain %v, but it was changed to %v", tt.initialBorrowedStatus, tt.book.Borrowed)
-				}
+		ts.Run(tt.name, func() {
+			id, err := ts.models.Books.Insert(ts.ctx, &tt.book)
+			if tt.expectError {
+				assert.ErrorIs(t, err, ErrDuplicateID)
 			} else {
-				if !tt.book.Borrowed {
-					t.Errorf("Expected book to be marked as borrowed, but it was not")
+				assert.NoError(t, err)
+				err = ts.deleteBooksFromDB(BookFilter{Title: &id})
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func (ts *TestSuite) TestGetBook() {
+	t := ts.T()
+
+	tests := []struct {
+		name        string
+		filter      BookFilter
+		expectedID  string
+		expectError bool
+	}{
+		{
+			name:        "FindByID",
+			filter:      BookFilter{ID: ptr(testBooksIDs[4].(primitive.ObjectID).Hex())},
+			expectedID:  testBooksIDs[4].(primitive.ObjectID).Hex(),
+			expectError: false,
+		},
+		{
+			name:        "FindByTitle",
+			filter:      BookFilter{Title: ptr("The Great Adventure")},
+			expectedID:  testBooksIDs[0].(primitive.ObjectID).Hex(),
+			expectError: false,
+		},
+		{
+			name:        "FindByAuthor",
+			filter:      BookFilter{Authors: []string{"John Doe"}},
+			expectedID:  testBooksIDs[0].(primitive.ObjectID).Hex(),
+			expectError: false,
+		},
+		{
+			name:        "FindByPublisher",
+			filter:      BookFilter{Publishers: []string{"Fiction Press"}},
+			expectedID:  testBooksIDs[0].(primitive.ObjectID).Hex(),
+			expectError: false,
+		},
+		{
+			name:        "NonExistent",
+			filter:      BookFilter{Title: ptr("Nonexistent book")},
+			expectedID:  testBooksIDs[0].(primitive.ObjectID).Hex(),
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			book, err := ts.models.Books.Get(ts.ctx, tt.filter)
+			if tt.expectError {
+				assert.ErrorIs(t, err, ErrDocumentNotFound)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, book.ID, tt.expectedID)
+			}
+		})
+	}
+}
+
+func (ts *TestSuite) TestGetAllBooks() {
+	t := ts.T()
+
+	tests := []struct {
+		name             string
+		filter           BookFilter
+		paginator        Paginator
+		expectedIDs      []string
+		expectedCount    int
+		expectedMetadata Metadata
+		expectError      bool
+	}{
+		{
+			name: "FilterByMinPages",
+			filter: BookFilter{
+				Title:    ptr("Test"),
+				MinPages: ptr(300),
+			},
+			paginator: Paginator{Page: 1, PageSize: 1},
+			expectedIDs: []string{
+				testBooksIDs[0].(primitive.ObjectID).Hex(),
+			},
+			expectedCount: 1,
+			expectedMetadata: Metadata{
+				CurrentPage:  1,
+				PageSize:     1,
+				FirstPage:    1,
+				LastPage:     6,
+				TotalRecords: 6,
+			},
+			expectError: false,
+		},
+		{
+			name: "FilterByMaxPages",
+			filter: BookFilter{
+				Title:    ptr("Test"),
+				MaxPages: ptr(250),
+			},
+			paginator: Paginator{Page: 1, PageSize: 2},
+			expectedIDs: []string{
+				testBooksIDs[3].(primitive.ObjectID).Hex(),
+				testBooksIDs[5].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  1,
+				PageSize:     2,
+				FirstPage:    1,
+				LastPage:     3,
+				TotalRecords: 5,
+			},
+			expectedCount: 2,
+			expectError:   false,
+		},
+		{
+			name: "FilterByPagesRange",
+			filter: BookFilter{
+				Title:    ptr("Test"),
+				MinPages: ptr(200),
+				MaxPages: ptr(400),
+			},
+			paginator: Paginator{Page: 2, PageSize: 4},
+			expectedIDs: []string{
+				testBooksIDs[6].(primitive.ObjectID).Hex(),
+				testBooksIDs[7].(primitive.ObjectID).Hex(),
+				testBooksIDs[8].(primitive.ObjectID).Hex(),
+				testBooksIDs[9].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  2,
+				PageSize:     4,
+				FirstPage:    1,
+				LastPage:     2,
+				TotalRecords: 8,
+			},
+			expectedCount: 4,
+			expectError:   false,
+		},
+		{
+			name: "FilterByPublishedAfter",
+			filter: BookFilter{
+				Title:          ptr("Test"),
+				MinPublishedAt: ptr(time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC)),
+			},
+			paginator: Paginator{Page: 1, PageSize: 10},
+			expectedIDs: []string{
+				testBooksIDs[0].(primitive.ObjectID).Hex(),
+				testBooksIDs[1].(primitive.ObjectID).Hex(),
+				testBooksIDs[5].(primitive.ObjectID).Hex(),
+				testBooksIDs[6].(primitive.ObjectID).Hex(),
+				testBooksIDs[8].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  1,
+				PageSize:     10,
+				FirstPage:    1,
+				LastPage:     1,
+				TotalRecords: 5,
+			},
+			expectedCount: 5,
+			expectError:   false,
+		},
+		{
+			name: "FilterByPublishedBefore",
+			filter: BookFilter{
+				Title:          ptr("Test"),
+				MaxPublishedAt: ptr(time.Date(2021, time.January, 1, 0, 0, 0, 0, time.UTC)),
+			},
+			paginator: Paginator{Page: 1, PageSize: 2},
+			expectedIDs: []string{
+				testBooksIDs[3].(primitive.ObjectID).Hex(),
+				testBooksIDs[9].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  1,
+				PageSize:     2,
+				FirstPage:    1,
+				LastPage:     2,
+				TotalRecords: 3,
+			},
+			expectedCount: 2,
+			expectError:   false,
+		},
+		{
+			name: "FilterByPublishDateRange",
+			filter: BookFilter{
+				Title:          ptr("Test"),
+				MinPublishedAt: ptr(time.Date(2021, time.January, 1, 0, 0, 0, 0, time.UTC)),
+				MaxPublishedAt: ptr(time.Date(2023, time.January, 1, 0, 0, 0, 0, time.UTC)),
+			},
+			paginator: Paginator{Page: 1, PageSize: 10},
+			expectedIDs: []string{
+				testBooksIDs[1].(primitive.ObjectID).Hex(),
+				testBooksIDs[2].(primitive.ObjectID).Hex(),
+				testBooksIDs[4].(primitive.ObjectID).Hex(),
+				testBooksIDs[6].(primitive.ObjectID).Hex(),
+				testBooksIDs[7].(primitive.ObjectID).Hex(),
+				testBooksIDs[8].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  1,
+				PageSize:     10,
+				FirstPage:    1,
+				LastPage:     1,
+				TotalRecords: 6,
+			},
+			expectedCount: 6,
+			expectError:   false,
+		},
+		{
+			name: "FilterByGenresAndMinPages",
+			filter: BookFilter{
+				Title:    ptr("Test"),
+				Genres:   []string{"Adventure"},
+				MinPages: ptr(300),
+			},
+			paginator: Paginator{Page: 1, PageSize: 10},
+			expectedIDs: []string{
+				testBooksIDs[0].(primitive.ObjectID).Hex(),
+				testBooksIDs[1].(primitive.ObjectID).Hex(),
+				testBooksIDs[9].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  1,
+				PageSize:     10,
+				FirstPage:    1,
+				LastPage:     1,
+				TotalRecords: 3,
+			},
+			expectedCount: 3,
+			expectError:   false,
+		},
+		{
+			name: "FilterByAuthorsAndDateRange",
+			filter: BookFilter{
+				Title:          ptr("Test"),
+				Authors:        []string{"Nina Scott"},
+				MinPublishedAt: ptr(time.Date(2021, time.January, 1, 0, 0, 0, 0, time.UTC)),
+				MaxPublishedAt: ptr(time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC)),
+			},
+			paginator: Paginator{Page: 1, PageSize: 10},
+			expectedIDs: []string{
+				testBooksIDs[7].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  1,
+				PageSize:     10,
+				FirstPage:    1,
+				LastPage:     1,
+				TotalRecords: 1,
+			},
+			expectedCount: 1,
+			expectError:   false,
+		},
+		{
+			name: "FilterByMinCreatedAt",
+			filter: BookFilter{
+				Title:        ptr("Test"),
+				MinCreatedAt: ptr(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)),
+			},
+			paginator: Paginator{Page: 1, PageSize: 2},
+			expectedIDs: []string{
+				testBooksIDs[0].(primitive.ObjectID).Hex(),
+				testBooksIDs[1].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  1,
+				PageSize:     2,
+				FirstPage:    1,
+				LastPage:     6,
+				TotalRecords: 11,
+			},
+			expectedCount: 2,
+			expectError:   false,
+		},
+		{
+			name: "FilterByMaxCreatedAt",
+			filter: BookFilter{
+				Title:        ptr("Test"),
+				MaxCreatedAt: ptr(time.Date(2022, 12, 31, 23, 59, 59, 0, time.UTC)),
+			},
+			paginator:        Paginator{Page: 1, PageSize: 10},
+			expectedIDs:      []string{},
+			expectedCount:    0,
+			expectedMetadata: Metadata{},
+			expectError:      false,
+		},
+		{
+			name: "FilterByMinAndMaxCreatedAt",
+			filter: BookFilter{
+				Title:        ptr("Test"),
+				MinCreatedAt: ptr(time.Date(2022, 1, 1, 0, 0, 0, 0, time.UTC)),
+				MaxCreatedAt: ptr(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)),
+			},
+			paginator:        Paginator{Page: 1, PageSize: 10},
+			expectedIDs:      []string{},
+			expectedMetadata: Metadata{},
+			expectedCount:    0,
+			expectError:      false,
+		},
+		{
+			name: "FilterByMinUpdatedAt",
+			filter: BookFilter{
+				Title:        ptr("Test"),
+				MinUpdatedAt: ptr(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)),
+			},
+			paginator: Paginator{Page: 2, PageSize: 2},
+			expectedIDs: []string{
+				testBooksIDs[2].(primitive.ObjectID).Hex(),
+				testBooksIDs[3].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  2,
+				PageSize:     2,
+				FirstPage:    1,
+				LastPage:     6,
+				TotalRecords: 11,
+			},
+			expectedCount: 2,
+			expectError:   false,
+		},
+		{
+			name: "FilterByMaxUpdatedAt",
+			filter: BookFilter{
+				Title:        ptr("Test"),
+				MaxUpdatedAt: ptr(time.Date(2022, 12, 31, 23, 59, 59, 0, time.UTC)),
+			},
+			paginator:        Paginator{Page: 1, PageSize: 10},
+			expectedIDs:      []string{},
+			expectedCount:    0,
+			expectedMetadata: Metadata{},
+			expectError:      false,
+		},
+		{
+			name: "FilterByExactVersion",
+			filter: BookFilter{
+				Title:   ptr("Test"),
+				Version: ptr(int32(0)),
+			},
+			paginator: Paginator{Page: 2, PageSize: 5},
+			expectedIDs: []string{
+				testBooksIDs[5].(primitive.ObjectID).Hex(),
+				testBooksIDs[6].(primitive.ObjectID).Hex(),
+				testBooksIDs[7].(primitive.ObjectID).Hex(),
+				testBooksIDs[8].(primitive.ObjectID).Hex(),
+				testBooksIDs[9].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  2,
+				PageSize:     5,
+				FirstPage:    1,
+				LastPage:     3,
+				TotalRecords: 11,
+			},
+			expectedCount: 5,
+			expectError:   false,
+		},
+		{
+			name: "FilterByMinCreatedAtAndVersion",
+			filter: BookFilter{
+				Title:        ptr("Test"),
+				MinCreatedAt: ptr(time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)),
+				Version:      ptr(int32(2)),
+			},
+			paginator:        Paginator{Page: 1, PageSize: 10},
+			expectedIDs:      []string{},
+			expectedMetadata: Metadata{},
+			expectedCount:    0,
+			expectError:      false,
+		},
+		{
+			name: "BoundaryPages",
+			filter: BookFilter{
+				Title:    ptr("Test"),
+				MinPages: ptr(150),
+				MaxPages: ptr(150),
+			},
+			paginator: Paginator{Page: 1, PageSize: 10},
+			expectedIDs: []string{
+				testBooksIDs[5].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  1,
+				PageSize:     10,
+				FirstPage:    1,
+				LastPage:     1,
+				TotalRecords: 1,
+			},
+			expectedCount: 1,
+			expectError:   false,
+		},
+		{
+			name: "AuthorGenreDateFilter",
+			filter: BookFilter{
+				Title:          ptr("Test"),
+				Authors:        []string{"David Green"},
+				Genres:         []string{"Technology"},
+				MinPublishedAt: ptr(time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC)),
+				MaxPublishedAt: ptr(time.Date(2022, time.December, 31, 23, 59, 59, 0, time.UTC)),
+			},
+			paginator: Paginator{Page: 1, PageSize: 10},
+			expectedIDs: []string{
+				testBooksIDs[6].(primitive.ObjectID).Hex(),
+			},
+			expectedMetadata: Metadata{
+				CurrentPage:  1,
+				PageSize:     10,
+				FirstPage:    1,
+				LastPage:     1,
+				TotalRecords: 1,
+			},
+			expectedCount: 1,
+			expectError:   false,
+		},
+		{
+			name: "PaginationExceedsData",
+			filter: BookFilter{
+				Title:    ptr("Test"),
+				MinPages: ptr(300),
+			},
+			paginator:   Paginator{Page: 100, PageSize: 10},
+			expectedIDs: []string{},
+			expectedMetadata: Metadata{
+				CurrentPage:  100,
+				PageSize:     10,
+				FirstPage:    1,
+				LastPage:     1,
+				TotalRecords: 6,
+			},
+			expectedCount: 0,
+			expectError:   false,
+		},
+		{
+			name: "NoMatchingCreatedAt",
+			filter: BookFilter{
+				Title:        ptr("Test"),
+				MinCreatedAt: ptr(time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)),
+			},
+			paginator:        Paginator{Page: 1, PageSize: 10},
+			expectedIDs:      []string{},
+			expectedMetadata: Metadata{},
+			expectedCount:    0,
+			expectError:      false,
+		},
+		{
+			name: "NoMatchingVersion",
+			filter: BookFilter{
+				Title:   ptr("Test"),
+				Version: ptr(int32(999)),
+			},
+			paginator:        Paginator{Page: 1, PageSize: 10},
+			expectedIDs:      []string{},
+			expectedMetadata: Metadata{},
+			expectedCount:    0,
+			expectError:      false,
+		},
+		{
+			name: "NoMatchingPagesRange",
+			filter: BookFilter{
+				Title:    ptr("Test"),
+				MinPages: ptr(1000),
+				MaxPages: ptr(2000),
+			},
+			paginator:        Paginator{Page: 1, PageSize: 10},
+			expectedIDs:      []string{},
+			expectedMetadata: Metadata{},
+			expectedCount:    0,
+			expectError:      false,
+		},
+		{
+			name: "NoMatchingPublishDate",
+			filter: BookFilter{
+				Title:          ptr("Test"),
+				MinPublishedAt: ptr(time.Date(2030, time.January, 1, 0, 0, 0, 0, time.UTC)),
+				MaxPublishedAt: ptr(time.Date(2031, time.January, 1, 0, 0, 0, 0, time.UTC)),
+			},
+			paginator:        Paginator{Page: 1, PageSize: 10},
+			expectedIDs:      []string{},
+			expectedMetadata: Metadata{},
+			expectedCount:    0,
+			expectError:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			books, metadata, err := ts.models.Books.GetAll(ts.ctx, tt.filter, tt.paginator)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Len(t, books, tt.expectedCount)
+
+				var actualIDs []string
+				for _, book := range books {
+					actualIDs = append(actualIDs, book.ID)
 				}
+				assert.ElementsMatch(t, tt.expectedIDs, actualIDs)
+
+				assert.Equal(t, tt.expectedMetadata, metadata)
 			}
 		})
 	}
 }
 
-func TestMarkBookAsNotBorrowed(t *testing.T) {
-	type args struct {
-		book *Book
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
-	}{
-		{
-			name: "mark book as not borrowed",
-			args: args{
-				book: &Book{
-					Title:    "Test Book",
-					ISBN:     "1234567890",
-					Authors:  []string{"Author One"},
-					Borrowed: true,
-				},
-			},
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.args.book.markBookAsNotBorrowed()
-			if tt.args.book.Borrowed != tt.want {
-				t.Errorf("markBookAsNotBorrowed() = %v, want %v", tt.args.book.Borrowed, tt.want)
-			}
-		})
-	}
-}
-
-func TestNewBook(t *testing.T) {
-	now := time.Now()
-	type args struct {
-		title          string
-		isbn           string
-		authors        []string
-		publishers     []string
-		genres         []string
-		pages          int
-		edition        int
-		published      time.Time
-		borrowDuration time.Duration
-	}
-	tests := []struct {
-		name string
-		args args
-		want *Book
-	}{
-		{
-			name: "CreateSuccessfully",
-			args: args{
-				title:          "Test Title",
-				isbn:           "1234567890",
-				authors:        []string{"Author1", "Author2"},
-				publishers:     []string{"Publisher1"},
-				genres:         []string{"Fiction", "Adventure"},
-				pages:          350,
-				edition:        1,
-				published:      now,
-				borrowDuration: 14 * 24 * time.Hour,
-			},
-			want: &Book{
-				Title:          "Test Title",
-				ISBN:           "1234567890",
-				Authors:        []string{"Author1", "Author2"},
-				Publishers:     []string{"Publisher1"},
-				Genres:         []string{"Fiction", "Adventure"},
-				Pages:          350,
-				Edition:        1,
-				Published:      now,
-				BorrowDuration: 14 * 24 * time.Hour,
-				Borrowed:       false,
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := NewBook(tt.args.title, tt.args.isbn, tt.args.authors, tt.args.publishers, tt.args.genres, tt.args.pages, tt.args.edition, tt.args.published, tt.args.borrowDuration)
-			if got.Title != tt.want.Title ||
-				got.ISBN != tt.want.ISBN ||
-				!reflect.DeepEqual(got.Authors, tt.want.Authors) ||
-				!reflect.DeepEqual(got.Publishers, tt.want.Publishers) ||
-				!reflect.DeepEqual(got.Genres, tt.want.Genres) ||
-				got.Pages != tt.want.Pages ||
-				got.Edition != tt.want.Edition ||
-				!got.Published.Equal(tt.want.Published) ||
-				got.BorrowDuration != tt.want.BorrowDuration ||
-				got.Borrowed != tt.want.Borrowed {
-				t.Errorf("NewBook() = %+v, want %+v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestUpdateBook(t *testing.T) {
-	now := time.Now()
-	newTime := now.AddDate(0, 0, 1)
-	newDuration := 21 * 24 * time.Hour
-
-	type args struct {
-		title          *string
-		isbn           *string
-		authors        *[]string
-		publishers     *[]string
-		genres         *[]string
-		pages          *int
-		edition        *int
-		published      *time.Time
-		borrowDuration *time.Duration
-	}
-	tests := []struct {
-		name string
-		book *Book
-		args args
-		want *Book
-	}{
-		{
-			name: "update title and authors",
-			book: &Book{
-				Title:   "Old Title",
-				Authors: []string{"Old Author"},
-			},
-			args: args{
-				title:   ptrStr("New Title"),
-				authors: &[]string{"New Author1", "New Author2"},
-			},
-			want: &Book{
-				Title:   "New Title",
-				Authors: []string{"New Author1", "New Author2"},
-			},
-		},
-		{
-			name: "update ISBN, pages, and edition",
-			book: &Book{
-				ISBN:    "1234567890",
-				Pages:   300,
-				Edition: 1,
-			},
-			args: args{
-				isbn:    ptrStr("0987654321"),
-				pages:   ptrInt(400),
-				edition: ptrInt(2),
-			},
-			want: &Book{
-				ISBN:    "0987654321",
-				Pages:   400,
-				Edition: 2,
-			},
-		},
-		{
-			name: "update publishers and genres",
-			book: &Book{
-				Publishers: []string{"Old Publisher"},
-				Genres:     []string{"Fiction"},
-			},
-			args: args{
-				publishers: &[]string{"New Publisher1", "New Publisher2"},
-				genres:     &[]string{"Adventure", "Mystery"},
-			},
-			want: &Book{
-				Publishers: []string{"New Publisher1", "New Publisher2"},
-				Genres:     []string{"Adventure", "Mystery"},
-			},
-		},
-		{
-			name: "update published date and borrow duration",
-			book: &Book{
-				Published:      now,
-				BorrowDuration: 14 * 24 * time.Hour,
-			},
-			args: args{
-				published:      &newTime,
-				borrowDuration: &newDuration,
-			},
-			want: &Book{
-				Published:      newTime,
-				BorrowDuration: newDuration,
-			},
-		},
-		{
-			name: "update all fields",
-			book: &Book{
-				Title:          "Old Title",
-				ISBN:           "1234567890",
-				Authors:        []string{"Author1"},
-				Publishers:     []string{"Publisher1"},
-				Genres:         []string{"Fiction"},
-				Pages:          300,
-				Edition:        1,
-				Published:      now,
-				BorrowDuration: 14 * 24 * time.Hour,
-			},
-			args: args{
-				title:          ptrStr("New Title"),
-				isbn:           ptrStr("0987654321"),
-				authors:        &[]string{"Author1", "Author2"},
-				publishers:     &[]string{"Publisher2"},
-				genres:         &[]string{"Adventure"},
-				pages:          ptrInt(400),
-				edition:        ptrInt(2),
-				published:      &newTime,
-				borrowDuration: &newDuration,
-			},
-			want: &Book{
-				Title:          "New Title",
-				ISBN:           "0987654321",
-				Authors:        []string{"Author1", "Author2"},
-				Publishers:     []string{"Publisher2"},
-				Genres:         []string{"Adventure"},
-				Pages:          400,
-				Edition:        2,
-				Published:      newTime,
-				BorrowDuration: newDuration,
-			},
-		},
-		{
-			name: "no updates",
-			book: &Book{
-				Title:          "No Update",
-				ISBN:           "1111111111",
-				Authors:        []string{"Author1"},
-				Publishers:     []string{"Publisher1"},
-				Genres:         []string{"Fiction"},
-				Pages:          100,
-				Edition:        1,
-				Published:      now,
-				BorrowDuration: 7 * 24 * time.Hour,
-			},
-			args: args{},
-			want: &Book{
-				Title:          "No Update",
-				ISBN:           "1111111111",
-				Authors:        []string{"Author1"},
-				Publishers:     []string{"Publisher1"},
-				Genres:         []string{"Fiction"},
-				Pages:          100,
-				Edition:        1,
-				Published:      now,
-				BorrowDuration: 7 * 24 * time.Hour,
-			},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.book.UpdateBook(tt.args.title, tt.args.isbn, tt.args.authors, tt.args.publishers, tt.args.genres, tt.args.pages, tt.args.edition, tt.args.published, tt.args.borrowDuration)
-			if !reflect.DeepEqual(tt.book, tt.want) {
-				t.Errorf("UpdateBook() = %+v, want %+v", tt.book, tt.want)
-			}
-		})
-	}
-}
-
-func TestSearchBooks(t *testing.T) {
-	books := []*Book{
-		{
-			ID:         1,
-			Title:      "The Great Gatsby",
-			ISBN:       "1234567890",
-			Authors:    []string{"F. Scott Fitzgerald"},
-			Publishers: []string{"Scribner"},
-			Genres:     []string{"Fiction"},
-			Pages:      218,
-			Edition:    1,
-			Published:  time.Date(1925, 4, 10, 0, 0, 0, 0, time.UTC),
-			Borrowed:   false,
-		},
-		{
-			ID:         2,
-			Title:      "1984",
-			ISBN:       "0987654321",
-			Authors:    []string{"George Orwell"},
-			Publishers: []string{"Secker & Warburg"},
-			Genres:     []string{"Dystopian", "Science Fiction"},
-			Pages:      328,
-			Edition:    1,
-			Published:  time.Date(1949, 6, 8, 0, 0, 0, 0, time.UTC),
-			Borrowed:   false,
-		},
-		{
-			ID:         3,
-			Title:      "Moby Dick",
-			ISBN:       "1112131415",
-			Authors:    []string{"Herman Melville"},
-			Publishers: []string{"Harper & Brothers"},
-			Genres:     []string{"Adventure", "Fiction"},
-			Pages:      635,
-			Edition:    1,
-			Published:  time.Date(1851, 10, 18, 0, 0, 0, 0, time.UTC),
-			Borrowed:   false,
-		},
-		{
-			ID:         4,
-			Title:      "To Kill a Mockingbird",
-			ISBN:       "5556677788",
-			Authors:    []string{"Harper Lee"},
-			Publishers: []string{"J.B. Lippincott & Co."},
-			Genres:     []string{"Fiction"},
-			Pages:      281,
-			Edition:    1,
-			Published:  time.Date(1960, 7, 11, 0, 0, 0, 0, time.UTC),
-			Borrowed:   false,
-		},
-		{
-			ID:         5,
-			Title:      "Pride and Prejudice",
-			ISBN:       "2223334445",
-			Authors:    []string{"Jane Austen"},
-			Publishers: []string{"T. Egerton"},
-			Genres:     []string{"Romance", "Fiction"},
-			Pages:      432,
-			Edition:    1,
-			Published:  time.Date(1813, 1, 28, 0, 0, 0, 0, time.UTC),
-			Borrowed:   false,
-		},
-	}
+func (ts *TestSuite) TestUpdateBook() {
+	t := ts.T()
 
 	tests := []struct {
-		name     string
-		criteria SearchCriteria
-		want     []*Book
+		name        string
+		initialBook Book
+		updateData  Book
+		expectError bool
+		expected    *Book
 	}{
 		{
-			name: "ByTileExactMatch",
-			criteria: SearchCriteria{
-				Title: ptrStr("The Great Gatsby"),
+			name: "UpdateExistingBook",
+			initialBook: Book{
+				Title:  "Test",
+				Pages:  100,
+				Genres: []string{"Fiction"},
 			},
-			want: []*Book{books[0]},
+			updateData: Book{
+				Title:  "Test",
+				Pages:  200,
+				Genres: []string{"Fiction", "Adventure"},
+			},
+			expectError: false,
+			expected: &Book{
+				Title:  "Test",
+				Pages:  200,
+				Genres: []string{"Fiction", "Adventure"},
+			},
 		},
 		{
-			name: "TitlePartialMatch",
-			criteria: SearchCriteria{
-				Title: ptrStr("Pride"),
+			name: "NonExistingBook",
+			initialBook: Book{
+				ID: "995cb5a4d3ddbde5ebeecc1f",
 			},
-			want: []*Book{books[4]},
-		},
-		{
-			name: "ByISBN",
-			criteria: SearchCriteria{
-				ISBN: ptrStr("1112131415"),
+			updateData: Book{
+				ID:    "995cb5a4d3ddbde5ebeecc1f",
+				Title: "Non-existent Book",
 			},
-			want: []*Book{books[2]},
-		},
-		{
-			name: "ByAuthor",
-			criteria: SearchCriteria{
-				Authors: &[]string{"Jane Austen"},
-			},
-			want: []*Book{books[4]},
-		},
-		{
-			name: "ByPublisher",
-			criteria: SearchCriteria{
-				Publishers: &[]string{"Scribner"},
-			},
-			want: []*Book{books[0]},
-		},
-		{
-			name: "ByGenre",
-			criteria: SearchCriteria{
-				Genres: &[]string{"Fiction"},
-			},
-			want: []*Book{books[0], books[2], books[3], books[4]},
-		},
-		{
-			name: "ByBorrowedStatus",
-			criteria: SearchCriteria{
-				Borrowed: ptrBool(false),
-			},
-			want: books,
-		},
-		{
-			name: "ByPageRange",
-			criteria: SearchCriteria{
-				MinPages: ptrInt(200),
-				MaxPages: ptrInt(400),
-			},
-			want: []*Book{books[0], books[1], books[3]},
-		},
-		{
-			name: "ByEditionRange",
-			criteria: SearchCriteria{
-				MinEdition: ptrInt(1),
-				MaxEdition: ptrInt(1),
-			},
-			want: books,
-		},
-		{
-			name: "ByPublishedDateRange",
-			criteria: SearchCriteria{
-				MinPublished: ptrTime(time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)),
-				MaxPublished: ptrTime(time.Date(1950, 12, 31, 0, 0, 0, 0, time.UTC)),
-			},
-			want: []*Book{books[0], books[1]},
-		},
-		{
-			name:     "NoCriteria",
-			criteria: SearchCriteria{},
-			want:     books,
-		},
-		{
-			name: "NoMatchInvalidISBN",
-			criteria: SearchCriteria{
-				ISBN: ptrStr("0000000000"),
-			},
-			want: []*Book{},
+			expectError: true,
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := SearchBooks(books, tt.criteria)
-			if len(got) != len(tt.want) {
-				t.Errorf("SearchBooks() = %v, want %v", got, tt.want)
-				return
-			}
+		ts.Run(tt.name, func() {
+			if tt.expectError {
+				err := ts.models.Books.Update(ts.ctx, BookFilter{ID: &tt.initialBook.ID}, &tt.updateData)
+				assert.ErrorIs(t, err, ErrEditConflict)
+			} else {
+				id, err := ts.models.Books.Insert(ts.ctx, &tt.initialBook)
+				assert.NoError(t, err)
 
-			for i, book := range got {
-				if book.Title != tt.want[i].Title {
-					t.Errorf("SearchBooks() = %v, want %v", got, tt.want)
-				}
-			}
-		})
-	}
-}
+				err = ts.models.Books.Update(ts.ctx, BookFilter{ID: &id}, &tt.updateData)
+				assert.NoError(t, err)
 
-func TestCheckBorrowed(t *testing.T) {
-	type args struct {
-		bookBorrowed bool
-		borrowed     *bool
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
-	}{
-		{
-			name: "MatchFound",
-			args: args{
-				bookBorrowed: true,
-				borrowed:     ptrBool(true),
-			},
-			want: true,
-		},
-		{
-			name: "NoMatch",
-			args: args{
-				bookBorrowed: false,
-				borrowed:     ptrBool(true),
-			},
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := checkBorrowed(tt.args.bookBorrowed, tt.args.borrowed); got != tt.want {
-				t.Errorf("checkBorrowed() = %v, want %v", got, tt.want)
+				updatedBook, err := ts.models.Books.Get(ts.ctx, BookFilter{ID: &id})
+				assert.NoError(t, err)
+
+				assert.Equal(t, updatedBook.Version, int32(1))
+
+				err = ts.deleteBooksFromDB(BookFilter{ID: &id})
+				assert.NoError(t, err)
 			}
 		})
 	}
 }
 
-func TestCheckEdition(t *testing.T) {
-	type args struct {
-		bookEdition int
-		minEdition  *int
-		maxEdition  *int
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
-	}{
-		{
-			name: "InRange",
-			args: args{
-				bookEdition: 2,
-				minEdition:  ptrInt(1),
-				maxEdition:  ptrInt(3),
-			},
-			want: true,
-		},
-		{
-			name: "BelowRange",
-			args: args{
-				bookEdition: 0,
-				minEdition:  ptrInt(1),
-				maxEdition:  ptrInt(3),
-			},
-			want: false,
-		},
-		{
-			name: "AboveRange",
-			args: args{
-				bookEdition: 4,
-				minEdition:  ptrInt(1),
-				maxEdition:  ptrInt(3),
-			},
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := checkEdition(tt.args.bookEdition, tt.args.minEdition, tt.args.maxEdition); got != tt.want {
-				t.Errorf("checkEdition() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
+func (ts *TestSuite) TestDeleteBook() {
+	t := ts.T()
 
-func TestCheckISBN(t *testing.T) {
-	type args struct {
-		bookISBN string
-		isbn     *string
-	}
 	tests := []struct {
-		name string
-		args args
-		want bool
+		name        string
+		initialBook Book
+		expectError bool
 	}{
 		{
-			name: "ExactMatch",
-			args: args{
-				bookISBN: "1234567890",
-				isbn:     ptrStr("1234567890"),
+			name: "ExistingBook",
+			initialBook: Book{
+				Title: "Book to be deleted",
 			},
-			want: true,
+			expectError: false,
 		},
 		{
-			name: "Mismatch",
-			args: args{
-				bookISBN: "1234567890",
-				isbn:     ptrStr("0987654321"),
+			name: "NonExistingBook",
+			initialBook: Book{
+				ID: "995cb5a4d3ddbde5ebeecc1e",
 			},
-			want: false,
-		},
-		{
-			name: "EmptyISBN",
-			args: args{
-				bookISBN: "",
-				isbn:     ptrStr("1234567890"),
-			},
-			want: false,
-		},
-		{
-			name: "EmptySearchISBN",
-			args: args{
-				bookISBN: "1234567890",
-				isbn:     ptrStr(""),
-			},
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := checkISBN(tt.args.bookISBN, tt.args.isbn); got != tt.want {
-				t.Errorf("checkISBN() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestCheckPages(t *testing.T) {
-	type args struct {
-		bookPages int
-		minPages  *int
-		maxPages  *int
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
-	}{
-		{
-			name: "InRange",
-			args: args{
-				bookPages: 200,
-				minPages:  ptrInt(100),
-				maxPages:  ptrInt(300),
-			},
-			want: true,
-		},
-		{
-			name: "BelowRange",
-			args: args{
-				bookPages: 50,
-				minPages:  ptrInt(100),
-				maxPages:  ptrInt(300),
-			},
-			want: false,
-		},
-		{
-			name: "AboveRange",
-			args: args{
-				bookPages: 350,
-				minPages:  ptrInt(100),
-				maxPages:  ptrInt(300),
-			},
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := checkPages(tt.args.bookPages, tt.args.minPages, tt.args.maxPages); got != tt.want {
-				t.Errorf("checkPages() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestCheckPublished(t *testing.T) {
-	type args struct {
-		bookPublished time.Time
-		minPublished  *time.Time
-		maxPublished  *time.Time
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
-	}{
-		{
-			name: "InRange",
-			args: args{
-				bookPublished: time.Date(2020, 5, 1, 0, 0, 0, 0, time.UTC),
-				minPublished:  ptrTime(time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)),
-				maxPublished:  ptrTime(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
-			},
-			want: true,
-		},
-		{
-			name: "BeforeRange",
-			args: args{
-				bookPublished: time.Date(2018, 5, 1, 0, 0, 0, 0, time.UTC),
-				minPublished:  ptrTime(time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)),
-				maxPublished:  ptrTime(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
-			},
-			want: false,
-		},
-		{
-			name: "AfterRange",
-			args: args{
-				bookPublished: time.Date(2022, 5, 1, 0, 0, 0, 0, time.UTC),
-				minPublished:  ptrTime(time.Date(2019, 1, 1, 0, 0, 0, 0, time.UTC)),
-				maxPublished:  ptrTime(time.Date(2021, 1, 1, 0, 0, 0, 0, time.UTC)),
-			},
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := checkPublished(tt.args.bookPublished, tt.args.minPublished, tt.args.maxPublished); got != tt.want {
-				t.Errorf("checkPublished() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestCheckStringSlice(t *testing.T) {
-	type args struct {
-		s             []string
-		criteriaSlice *[]string
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
-	}{
-		{
-			name: "MatchFound",
-			args: args{
-				s:             []string{"author1", "author2", "author3"},
-				criteriaSlice: ptrStrSlice([]string{"author2"}),
-			},
-			want: true,
-		},
-		{
-			name: "NoMatch",
-			args: args{
-				s:             []string{"author1", "author3"},
-				criteriaSlice: ptrStrSlice([]string{"author2"}),
-			},
-			want: false,
-		},
-		{
-			name: "MultipleMatches",
-			args: args{
-				s:             []string{"author1", "author2", "author3"},
-				criteriaSlice: ptrStrSlice([]string{"author2", "author1"}),
-			},
-			want: true,
-		},
-		{
-			name: "EmptyBookSlice",
-			args: args{
-				s:             []string{},
-				criteriaSlice: ptrStrSlice([]string{"author1"}),
-			},
-			want: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := checkStringSlice(tt.args.s, tt.args.criteriaSlice); got != tt.want {
-				t.Errorf("checkStringSlice() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestCheckTitle(t *testing.T) {
-	type args struct {
-		bookTitle string
-		title     *string
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
-	}{
-		{
-			name: "ExactMatch",
-			args: args{
-				bookTitle: "The Great Gatsby",
-				title:     ptrStr("The Great Gatsby"),
-			},
-			want: true,
-		},
-		{
-			name: "NoMatch",
-			args: args{
-				bookTitle: "The Great Gatsby",
-				title:     ptrStr("Moby Dick"),
-			},
-			want: false,
-		},
-		{
-			name: "EmptyStringInBookTitle",
-			args: args{
-				bookTitle: "",
-				title:     ptrStr("Great"),
-			},
-			want: false,
-		},
-		{
-			name: "PartialMatch",
-			args: args{
-				bookTitle: "The Great Gatsby",
-				title:     ptrStr("Gatsby"),
-			},
-			want: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := checkTitle(tt.args.bookTitle, tt.args.title); got != tt.want {
-				t.Errorf("checkTitle() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestContains(t *testing.T) {
-	type args struct {
-		slice []string
-		str   string
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
-	}{
-		{
-			name: "string is in slice",
-			args: args{
-				slice: []string{"apple", "banana", "cherry"},
-				str:   "banana",
-			},
-			want: true,
-		},
-		{
-			name: "string is not in slice",
-			args: args{
-				slice: []string{"apple", "banana", "cherry"},
-				str:   "orange",
-			},
-			want: false,
-		},
-		{
-			name: "empty slice",
-			args: args{
-				slice: []string{},
-				str:   "banana",
-			},
-			want: false,
-		},
-		{
-			name: "empty string",
-			args: args{
-				slice: []string{"apple", "banana", "cherry"},
-				str:   "",
-			},
-			want: false,
-		},
-		{
-			name: "string is the first element",
-			args: args{
-				slice: []string{"apple", "banana", "cherry"},
-				str:   "apple",
-			},
-			want: true,
-		},
-		{
-			name: "string is the last element",
-			args: args{
-				slice: []string{"apple", "banana", "cherry"},
-				str:   "cherry",
-			},
-			want: true,
-		},
-		{
-			name: "string is in slice with repeated elements",
-			args: args{
-				slice: []string{"apple", "banana", "banana", "cherry"},
-				str:   "banana",
-			},
-			want: true,
+			expectError: true,
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := contains(tt.args.slice, tt.args.str); got != tt.want {
-				t.Errorf("contains() = %v, want %v", got, tt.want)
+		ts.Run(tt.name, func() {
+			if tt.expectError {
+				err := ts.models.Books.Delete(ts.ctx, BookFilter{ID: &tt.initialBook.ID})
+				assert.ErrorIs(t, err, ErrDocumentNotFound)
+			} else {
+				id, err := ts.models.Books.Insert(ts.ctx, &tt.initialBook)
+				assert.NoError(t, err)
+
+				err = ts.models.Books.Delete(ts.ctx, BookFilter{ID: &id})
+				assert.NoError(t, err)
+
+				_, err = ts.models.Books.Get(ts.ctx, BookFilter{ID: &id})
+				assert.ErrorIs(t, err, ErrDocumentNotFound)
 			}
 		})
 	}
-}
-
-func TestGetBookByTitle(t *testing.T) {
-	type args struct {
-		title string
-		books []*Book
-	}
-	tests := []struct {
-		name    string
-		args    args
-		want    *Book
-		wantErr error
-	}{
-		{
-			name: "FoundBook",
-			args: args{
-				title: "Test Book",
-				books: []*Book{
-					{Title: "Test Book", ISBN: "1234567890"},
-					{Title: "Another Book", ISBN: "0987654321"},
-				},
-			},
-			want:    &Book{Title: "Test Book", ISBN: "1234567890"},
-			wantErr: nil,
-		},
-		{
-			name: "NotFoundBook",
-			args: args{
-				title: "Nonexistent Book",
-				books: []*Book{
-					{Title: "Test Book", ISBN: "1234567890"},
-					{Title: "Another Book", ISBN: "0987654321"},
-				},
-			},
-			want:    nil,
-			wantErr: errors.New(errNonexistentBook),
-		},
-		{
-			name: "EmptyBookSlice",
-			args: args{
-				title: "Test Book",
-				books: []*Book{},
-			},
-			want:    nil,
-			wantErr: errors.New(errNonexistentBook),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := getBookByTitle(tt.args.title, tt.args.books)
-
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("getBookByTitle() = %v, want %v", got, tt.want)
-			}
-
-			if !reflect.DeepEqual(err, tt.wantErr) {
-				t.Errorf("getBookByTitle() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestMatchesAllCriteria(t *testing.T) {
-	type args struct {
-		book     *Book
-		criteria SearchCriteria
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
-	}{
-		{
-			name: "AllCriteriaMatch",
-			args: args{
-				book: &Book{
-					Title:      "The Great Gatsby",
-					ISBN:       "1234567890",
-					Authors:    []string{"F. Scott Fitzgerald"},
-					Publishers: []string{"Scribner"},
-					Genres:     []string{"Fiction"},
-					Borrowed:   false,
-					Pages:      218,
-					Edition:    1,
-					Published:  time.Date(1925, time.April, 10, 0, 0, 0, 0, time.UTC),
-				},
-				criteria: SearchCriteria{
-					Title:        ptrStr("The Great Gatsby"),
-					ISBN:         ptrStr("1234567890"),
-					Authors:      &[]string{"F. Scott Fitzgerald"},
-					Publishers:   &[]string{"Scribner"},
-					Genres:       &[]string{"Fiction"},
-					Borrowed:     ptrBool(false),
-					MinPages:     ptrInt(200),
-					MaxPages:     ptrInt(300),
-					MinEdition:   ptrInt(1),
-					MaxEdition:   ptrInt(1),
-					MinPublished: ptrTime(time.Date(1920, time.January, 1, 0, 0, 0, 0, time.UTC)),
-					MaxPublished: ptrTime(time.Date(1930, time.January, 1, 0, 0, 0, 0, time.UTC)),
-				},
-			},
-			want: true,
-		},
-		{
-			name: "NoSpecifiedCriteria",
-			args: args{
-				book: &Book{
-					Title: "1984",
-					ISBN:  "0987654321",
-					Authors: []string{
-						"George Orwell",
-					},
-					Publishers: []string{"Secker & Warburg"},
-					Genres:     []string{"Dystopian", "Science Fiction"},
-					Pages:      328,
-					Edition:    1,
-					Published:  time.Date(1949, time.June, 8, 0, 0, 0, 0, time.UTC),
-				},
-				criteria: SearchCriteria{},
-			},
-			want: true,
-		},
-		{
-			name: "AuthorsDoNotMatch",
-			args: args{
-				book: &Book{
-					Title:      "Moby Dick",
-					ISBN:       "1112131415",
-					Authors:    []string{"Herman Melville"},
-					Publishers: []string{"Harper & Brothers"},
-					Genres:     []string{"Adventure", "Fiction"},
-					Pages:      635,
-					Edition:    1,
-					Published:  time.Date(1851, time.October, 18, 0, 0, 0, 0, time.UTC),
-				},
-				criteria: SearchCriteria{
-					Authors: &[]string{"Mark Twain"},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "MultipleCriteriaMismatch",
-			args: args{
-				book: &Book{
-					Title:      "To Kill a Mockingbird",
-					ISBN:       "5556677788",
-					Authors:    []string{"Harper Lee"},
-					Publishers: []string{"J.B. Lippincott & Co."},
-					Genres:     []string{"Fiction"},
-					Pages:      281,
-					Edition:    1,
-					Published:  time.Date(1960, time.July, 11, 0, 0, 0, 0, time.UTC),
-				},
-				criteria: SearchCriteria{
-					ISBN:       ptrStr("9999999999"),
-					Borrowed:   ptrBool(true),
-					MinPages:   ptrInt(300),
-					MaxPages:   ptrInt(400),
-					MinEdition: ptrInt(2),
-					MaxEdition: ptrInt(3),
-				},
-			},
-			want: false,
-		},
-		{
-			name: "TitleAndPublisherMatchOnly",
-			args: args{
-				book: &Book{
-					Title:      "Pride and Prejudice",
-					ISBN:       "2223334445",
-					Authors:    []string{"Jane Austen"},
-					Publishers: []string{"T. Egerton"},
-					Genres:     []string{"Romance", "Fiction"},
-					Pages:      432,
-					Edition:    1,
-					Published:  time.Date(1813, time.January, 28, 0, 0, 0, 0, time.UTC),
-				},
-				criteria: SearchCriteria{
-					Title:      ptrStr("Pride and Prejudice"),
-					Publishers: &[]string{"T. Egerton"},
-				},
-			},
-			want: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := matchesAllCriteria(tt.args.book, tt.args.criteria); got != tt.want {
-				t.Errorf("matchesAllCriteria() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-// ptrStr is a helper function for creating a string pointer.
-func ptrStr(s string) *string {
-	return &s
-}
-
-// ptrBool is a helper function for creating a boolean pointer.
-func ptrBool(b bool) *bool {
-	return &b
-}
-
-// ptrInt is a helper function for creating an int pointer.
-func ptrInt(i int) *int {
-	return &i
-}
-
-// ptrTime is a helper function for creating a time pointer.
-func ptrTime(t time.Time) *time.Time {
-	return &t
-}
-
-// ptrStrSlice is a helper function for creating a slice pointer.
-func ptrStrSlice(s []string) *[]string {
-	return &s
 }

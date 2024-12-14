@@ -1,18 +1,15 @@
 package data
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"math"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"strings"
 	"time"
-)
-
-const (
-	errUnknownCategory = "unknown patron category"
-	errUnableToBorrow  = "unable to borrow book"
-	errUnableToReturn  = "unable to return book"
-	errBookNotOwned    = "book is not borrowed by patron"
 )
 
 const (
@@ -23,167 +20,290 @@ const (
 type PatronCategoryType string
 
 type Patron struct {
-	ID            uint32
-	Name          string
-	CreatedAt     time.Time
-	BorrowedBooks map[string]bookDetails
-	Category      patronCategory
+	ID        string         `bson:"_id,omitempty" json:"id,omitempty"`
+	Name      string         `bson:"name" json:"name"`
+	Email     string         `bson:"email" json:"email"`
+	CreatedAt time.Time      `bson:"created_at" json:"created_at"`
+	UpdatedAt time.Time      `bson:"updated_at" json:"updated_at"`
+	Category  PatronCategory `bson:"category" json:"category"`
+	Version   int32          `bson:"version" json:"-"`
 }
 
-type bookDetails struct {
-	ISBN           string
-	BorrowDuration time.Duration
-	BorrowedAt     time.Time
+type PatronFilter struct {
+	ID           *string        `json:"id,omitempty"`
+	MinCreatedAt *time.Time     `json:"min_created_at,omitempty"`
+	MaxCreatedAt *time.Time     `json:"max_created_at,omitempty"`
+	MinUpdatedAt *time.Time     `json:"min_updated_at,omitempty"`
+	MaxUpdatedAt *time.Time     `json:"max_updated_at,omitempty"`
+	Name         *string        `json:"name,omitempty"`
+	Email        *string        `json:"email,omitempty"`
+	Category     PatronCategory `json:"category,omitempty"`
+	Version      *int32         `json:"version,omitempty"`
 }
 
-type patronCategory interface {
+type PatronModel struct {
+	Client     *mongo.Client
+	Database   string
+	Collection string
+}
+
+type PatronCategory interface {
 	Discount() float64
+	Type() PatronCategoryType
 }
 
 type TeacherCategory struct {
-	DiscountPercentage float64
+	CategoryType       PatronCategoryType `bson:"type" json:"type"`
+	DiscountPercentage float64            `bson:"discount_percentage" json:"discount_percentage"`
 }
 
 type StudentCategory struct {
-	DiscountPercentage float64
+	CategoryType       PatronCategoryType `bson:"type" json:"type"`
+	DiscountPercentage float64            `bson:"discount_percentage" json:"discount_percentage"`
 }
 
 func (t TeacherCategory) Discount() float64 {
 	return t.DiscountPercentage / 100
 }
 
+func (t TeacherCategory) Type() PatronCategoryType {
+	return t.CategoryType
+}
+
 func (s StudentCategory) Discount() float64 {
 	return s.DiscountPercentage / 100
 }
 
-// NewPatron creates a new Patron instance with the specified name, category type, and discount rates.
-// It initializes the patron's borrowing history and assigns the appropriate discount category.
-func NewPatron(name string, categoryType PatronCategoryType, discounts map[PatronCategoryType]float64) (Patron, error) {
-	var category patronCategory
-
-	switch categoryType {
-	case Teacher:
-		category = TeacherCategory{
-			DiscountPercentage: discounts[Teacher],
-		}
-	case Student:
-		category = StudentCategory{
-			DiscountPercentage: discounts[Student],
-		}
-	default:
-		return Patron{}, errors.New(errUnknownCategory)
-	}
-
-	return Patron{
-		ID:            uuid.New().ID(),
-		Name:          name,
-		CreatedAt:     time.Now(),
-		BorrowedBooks: make(map[string]bookDetails),
-		Category:      category,
-	}, nil
+func (s StudentCategory) Type() PatronCategoryType {
+	return s.CategoryType
 }
 
-// UpdatePatron updates the patron's name and/or category type based on the provided parameters.
-func (p *Patron) UpdatePatron(name *string, categoryType *PatronCategoryType, discounts map[PatronCategoryType]float64) error {
-	if name != nil {
-		p.Name = *name
+// NewPatron is a constructor for Patron.
+func NewPatron(id string, name, email string, category PatronCategory) *Patron {
+	now := time.Now()
+
+	return &Patron{
+		ID:        id,
+		Name:      name,
+		Email:     email,
+		Category:  category,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+}
+
+// buildPatronFilter constructs a filter query for filtering patrons.
+func buildPatronFilter(filter PatronFilter) (bson.M, error) {
+	query := bson.M{}
+
+	if filter.ID != nil {
+		id, err := primitive.ObjectIDFromHex(*filter.ID)
+		if err != nil {
+			return query, err
+		}
+		query[idTag] = id
+	}
+	if filter.MinCreatedAt != nil || filter.MaxCreatedAt != nil {
+		createdAtRange := bson.M{}
+		if filter.MinCreatedAt != nil {
+			createdAtRange["$gte"] = *filter.MinCreatedAt
+		}
+		if filter.MaxCreatedAt != nil {
+			createdAtRange["$lte"] = *filter.MaxCreatedAt
+		}
+		query[createdAt] = createdAtRange
+	}
+	if filter.MinUpdatedAt != nil || filter.MaxUpdatedAt != nil {
+		updatedAtRange := bson.M{}
+		if filter.MinUpdatedAt != nil {
+			updatedAtRange["$gte"] = *filter.MinUpdatedAt
+		}
+		if filter.MaxUpdatedAt != nil {
+			updatedAtRange["$lte"] = *filter.MaxUpdatedAt
+		}
+		query[updatedAtTag] = updatedAtRange
+	}
+	if filter.Name != nil {
+		query[nameTag] = bson.M{"$regex": *filter.Name, "$options": "i"}
+	}
+	if filter.Email != nil {
+		query[emailTag] = *filter.Email
+	}
+	if filter.Category != nil {
+		categoryFilter := bson.M{}
+		switch v := filter.Category.(type) {
+		case TeacherCategory:
+			categoryFilter[typeTag] = v.Type()
+			categoryFilter[discountPercentageTag] = v.DiscountPercentage
+		case StudentCategory:
+			categoryFilter[typeTag] = v.Type()
+			categoryFilter[discountPercentageTag] = v.DiscountPercentage
+		}
+		query[categoryTag] = categoryFilter
+	}
+	if filter.Version != nil {
+		query[versionTag] = *filter.Version
 	}
 
-	if categoryType != nil {
-		switch *categoryType {
-		case Teacher:
-			p.Category = TeacherCategory{
-				DiscountPercentage: discounts[Teacher],
-			}
-		case Student:
-			p.Category = StudentCategory{
-				DiscountPercentage: discounts[Student],
-			}
+	return query, nil
+}
+
+// buildPatronUpdater constructs an update document for updating a Patron.
+func buildPatronUpdater(patron *Patron) bson.D {
+	updateFields := bson.D{
+		{Key: nameTag, Value: patron.Name},
+		{Key: emailTag, Value: patron.Email},
+		{Key: categoryTag, Value: patron.Category},
+	}
+
+	updateFields = append(updateFields, bson.E{Key: updatedAtTag, Value: time.Now()})
+
+	update := bson.D{
+		{Key: "$set", Value: updateFields},
+		{Key: "$inc", Value: bson.D{{Key: versionTag, Value: 1}}},
+	}
+
+	return update
+}
+
+// Insert inserts a new Patron into the database.
+func (p PatronModel) Insert(ctx context.Context, patron *Patron) (string, error) {
+	coll := p.Client.Database(p.Database).Collection(p.Collection)
+
+	patron.CreatedAt = time.Now()
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	res, err := coll.InsertOne(ctx, patron)
+	if err != nil {
+		switch {
+		case strings.Contains(err.Error(), "E11000 duplicate key error collection"):
+			return "", ErrDuplicateID
 		default:
-			return errors.New(errUnknownCategory)
+			return "", err
 		}
 	}
 
-	return nil
+	if oid, ok := res.InsertedID.(primitive.ObjectID); ok {
+		return oid.Hex(), nil
+	}
+
+	return res.InsertedID.(string), nil
 }
 
-// BorrowBook allows the patron to borrow a book by title from the available list of books.
-// It updates the book's status to borrowed and records the borrowing details for the patron.
-func (p *Patron) BorrowBook(title string, books []*Book) error {
-	book, err := getBookByTitle(title, books)
+// Get retrieves a single Patron from the database matching an optional filter.
+func (p PatronModel) Get(ctx context.Context, filter PatronFilter) (*Patron, error) {
+	coll := p.Client.Database(p.Database).Collection(p.Collection)
+
+	filterQuery, err := buildPatronFilter(filter)
 	if err != nil {
-		return fmt.Errorf("%v: %v", errUnableToBorrow, err)
+		return nil, fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
 
-	if err = book.markBookAsBorrowed(); err != nil {
-		return fmt.Errorf("%v: %v", errUnableToBorrow, errBookAlreadyBorrowed)
-	}
+	patron := &Patron{}
 
-	borrowed := bookDetails{
-		ISBN:           book.ISBN,
-		BorrowDuration: book.BorrowDuration,
-		BorrowedAt:     time.Now(),
-	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
-	if p.BorrowedBooks == nil {
-		p.BorrowedBooks = make(map[string]bookDetails)
-	}
-
-	p.BorrowedBooks[title] = borrowed
-
-	return nil
-}
-
-// ReturnBook allows the patron to return a borrowed book by title.
-// It updates the book's status to available and removes the borrowing record for the patron.
-func (p *Patron) ReturnBook(title string, books []*Book) error {
-	book, err := getBookByTitle(title, books)
+	err = coll.FindOne(ctx, filterQuery).Decode(patron)
 	if err != nil {
-		return fmt.Errorf("%v: %v", errUnableToReturn, err)
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, ErrDocumentNotFound
+		}
+		return nil, err
 	}
 
-	if _, ok := p.BorrowedBooks[title]; !ok {
-		return fmt.Errorf("%v: %v", errUnableToReturn, errBookNotOwned)
+	return patron, nil
+}
+
+// GetAll retrieves all mockBooks from the database matching an optional filter and paginator.
+func (p PatronModel) GetAll(ctx context.Context, filter PatronFilter, paginator Paginator) ([]Patron, Metadata, error) {
+	coll := p.Client.Database(p.Database).Collection(p.Collection)
+
+	patrons := make([]Patron, 0)
+
+	findOpt := options.Find().SetLimit(paginator.limit()).SetSkip(paginator.offset())
+	filterQuery, err := buildPatronFilter(filter)
+	if err != nil {
+		return patrons, Metadata{}, fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
 
-	book.markBookAsNotBorrowed()
-	delete(p.BorrowedBooks, title)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	totalRecords, err := coll.CountDocuments(ctx, filterQuery)
+	if err != nil {
+		return patrons, Metadata{}, errCreatingQueryFilter
+	}
+
+	cursor, err := coll.Find(ctx, filterQuery, findOpt)
+	if err != nil {
+		return patrons, Metadata{}, err
+	}
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var patron Patron
+		if err = cursor.Decode(&patron); err != nil {
+			return patrons, Metadata{}, err
+		}
+
+		patrons = append(patrons, patron)
+	}
+
+	metadata := calculateMetadata(totalRecords, paginator.Page, paginator.PageSize)
+
+	return patrons, metadata, nil
+}
+
+// Update updates a Patron's details in the database.
+func (p PatronModel) Update(ctx context.Context, filter PatronFilter, patron *Patron) error {
+	coll := p.Client.Database(p.Database).Collection(p.Collection)
+
+	update := buildPatronUpdater(patron)
+
+	filter.Version = &patron.Version
+	filterQuery, err := buildPatronFilter(filter)
+	if err != nil {
+		return fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	result, err := coll.UpdateOne(ctx, filterQuery, update)
+	if err != nil {
+		return err
+	}
+
+	if result.MatchedCount == 0 {
+		return ErrEditConflict
+	}
 
 	return nil
 }
 
-// GetBorrowedBooks retrieves a map of the books currently borrowed by the patron and their due dates.
-func (p *Patron) GetBorrowedBooks() map[string]time.Time {
-	borrowed := make(map[string]time.Time)
+// Delete deletes a Patron from the database by ID.
+func (p PatronModel) Delete(ctx context.Context, filter PatronFilter) error {
+	coll := p.Client.Database(p.Database).Collection(p.Collection)
 
-	for title, book := range p.BorrowedBooks {
-		borrowed[title] = book.BorrowedAt.Add(book.BorrowDuration)
+	filterQuery, err := buildPatronFilter(filter)
+	if err != nil {
+		return fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
 
-	return borrowed
-}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
-// CalcFine calculates the total fine for overdue books borrowed by the patron.
-// The fine is based on the overdue duration of each book, a specified per-day overdue fine rate,
-// and the patron's category discount.
-func (p *Patron) CalcFine(overdueFine float64) float64 {
-	var totalFine float64
-
-	for _, item := range p.BorrowedBooks {
-		bookFine := overdueFine * float64(daysBetween(item.BorrowedAt.Add(item.BorrowDuration), time.Now()))
-		totalFine = totalFine + bookFine
+	result, err := coll.DeleteOne(ctx, filterQuery)
+	if err != nil {
+		return err
 	}
 
-	return totalFine * (1 - p.Category.Discount())
-}
-
-// daysBetween calculates the number of days between two time.Time values, rounding up the result.
-// If the end time is before the start time, it returns 0 or handles the error.
-func daysBetween(start, end time.Time) int {
-	duration := end.Sub(start)
-	if duration < 0 {
-		return 0
+	if result.DeletedCount == 0 {
+		return ErrDocumentNotFound
 	}
 
-	return int(math.Ceil(duration.Hours() / 24))
+	return nil
 }

@@ -24,12 +24,14 @@ build/api:
 	@echo 'Building cmd/...'
 	go build -ldflags='-s' -o=./bin/api ./cmd/
 
+## docker-build: builds docker image
 .PHONY: docker-build
-docker-build: ## Build docker image with the manager.
+docker-build:
 	$(CONTAINER_TOOL) build -t ${IMG} .
 
+## docker-push: pushes docker image to registry
 .PHONY: docker-push
-docker-push: ## Push docker image with the manager.
+docker-push:
 	$(CONTAINER_TOOL) push ${IMG}
 
 # ==================================================================================== #
@@ -39,7 +41,17 @@ docker-push: ## Push docker image with the manager.
 ## run/api: run the cmd/api application
 .PHONY: run/api
 run/api:
-	go run ./cmd/
+	go run ./cmd/ --db-dsn=$(DB_DSN)
+
+## setup-local-mongo: creates a local mongodb
+.PHONY: setup-local-mongo
+setup-local-mongo:
+	$(CONTAINER_TOOL) compose up -d
+
+## teardown-local-mongo: creates a local mongodb
+.PHONY: teardown-local-mongo
+teardown-local-mongo:
+	$(CONTAINER_TOOL) compose down
 
 # ==================================================================================== #
 # QUALITY CONTROL
