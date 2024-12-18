@@ -166,6 +166,7 @@ func (ts *TestSuite) TestGetAllBooks() {
 		name             string
 		filter           BookFilter
 		paginator        Paginator
+		sorter           Sorter
 		expectedIDs      []string
 		expectedCount    int
 		expectedMetadata Metadata
@@ -618,7 +619,7 @@ func (ts *TestSuite) TestGetAllBooks() {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			books, metadata, err := ts.models.Books.GetAll(ts.ctx, tt.filter, tt.paginator)
+			books, metadata, err := ts.models.Books.GetAll(ts.ctx, tt.filter, tt.paginator, tt.sorter)
 
 			if tt.expectError {
 				assert.Error(t, err)

@@ -7,14 +7,9 @@ import (
 	"time"
 )
 
-const (
-	testTeacherDiscount = 10
-	testStudentDiscount = 5
-)
-
 var (
-	testTeacherCategory = TeacherCategory{CategoryType: Teacher, DiscountPercentage: testTeacherDiscount}
-	testStudentCategory = StudentCategory{CategoryType: Student, DiscountPercentage: testStudentDiscount}
+	testTeacherCategory = "teacher"
+	testStudentCategory = "student"
 
 	testPatronsIDs []interface{}
 	testPatrons    = []interface{}{
@@ -134,7 +129,7 @@ func (ts *TestSuite) TestGetPatron() {
 		},
 		{
 			name:        "FindByCategory",
-			filter:      PatronFilter{Category: testTeacherCategory},
+			filter:      PatronFilter{Category: &testTeacherCategory},
 			expectedID:  testPatronsIDs[0].(primitive.ObjectID).Hex(),
 			expectError: false,
 		},
@@ -165,6 +160,7 @@ func (ts *TestSuite) TestGetAllPatrons() {
 		name             string
 		filter           PatronFilter
 		paginator        Paginator
+		sorter           Sorter
 		expectedIDs      []string
 		expectedCount    int
 		expectedMetadata Metadata
@@ -172,7 +168,7 @@ func (ts *TestSuite) TestGetAllPatrons() {
 	}{
 		{
 			name:      "FilterByCategoryTeacher",
-			filter:    PatronFilter{Category: testTeacherCategory},
+			filter:    PatronFilter{Category: &testTeacherCategory},
 			paginator: Paginator{Page: 1, PageSize: 3},
 			expectedIDs: []string{
 				testPatronsIDs[0].(primitive.ObjectID).Hex(),
@@ -191,7 +187,7 @@ func (ts *TestSuite) TestGetAllPatrons() {
 		},
 		{
 			name:      "FilterByCategoryStudent",
-			filter:    PatronFilter{Category: testStudentCategory},
+			filter:    PatronFilter{Category: &testStudentCategory},
 			paginator: Paginator{Page: 1, PageSize: 3},
 			expectedIDs: []string{
 				testPatronsIDs[1].(primitive.ObjectID).Hex(),
@@ -248,7 +244,7 @@ func (ts *TestSuite) TestGetAllPatrons() {
 		},
 		{
 			name:      "PaginationBoundary",
-			filter:    PatronFilter{Category: testTeacherCategory},
+			filter:    PatronFilter{Category: &testTeacherCategory},
 			paginator: Paginator{Page: 2, PageSize: 2},
 			expectedIDs: []string{
 				testPatronsIDs[4].(primitive.ObjectID).Hex(),
@@ -307,9 +303,10 @@ func (ts *TestSuite) TestGetAllPatrons() {
 			expectError: false,
 		},
 		{
-			name: "FilterByMinUpdatedAt",
+			name: "FilterByUpdatedAtRange",
 			filter: PatronFilter{
 				MinUpdatedAt: ptr(time.Now().Add(-12 * time.Hour)),
+				MaxUpdatedAt: ptr(time.Now().Add(-11 * time.Hour)),
 			},
 			paginator:        Paginator{Page: 1, PageSize: 2},
 			expectedIDs:      []string{},
@@ -353,7 +350,7 @@ func (ts *TestSuite) TestGetAllPatrons() {
 		{
 			name: "FilterByCategoryAndEmail",
 			filter: PatronFilter{
-				Category: testStudentCategory,
+				Category: &testStudentCategory,
 				Email:    ptr("sam.student@example.com"),
 			},
 			paginator: Paginator{Page: 1, PageSize: 10},
@@ -389,7 +386,7 @@ func (ts *TestSuite) TestGetAllPatrons() {
 			name: "FilterByNameAndCategory",
 			filter: PatronFilter{
 				Name:     ptr("Jim Teacher"),
-				Category: testTeacherCategory,
+				Category: &testTeacherCategory,
 			},
 			paginator: Paginator{Page: 1, PageSize: 10},
 			expectedIDs: []string{
@@ -409,7 +406,7 @@ func (ts *TestSuite) TestGetAllPatrons() {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			patrons, metadata, err := ts.models.Patrons.GetAll(ts.ctx, tt.filter, tt.paginator)
+			patrons, metadata, err := ts.models.Patrons.GetAll(ts.ctx, tt.filter, tt.paginator, tt.sorter)
 			if tt.expectError {
 				assert.Error(t, err)
 			}

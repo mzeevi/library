@@ -19,8 +19,8 @@ type Book struct {
 	Copies         int       `bson:"copies" json:"copies"`
 	BorrowedCopies int       `bson:"borrowed_copies" json:"borrowed_copies"`
 	PublishedAt    time.Time `bson:"published_at" json:"published_at"`
-	CreatedAt      time.Time `bson:"created_at" json:"created_at"`
-	UpdatedAt      time.Time `bson:"updated_at" json:"updated_at"`
+	CreatedAt      time.Time `bson:"created_at" json:"-"`
+	UpdatedAt      time.Time `bson:"updated_at" json:"-"`
 	Title          string    `bson:"title" json:"title"`
 	ISBN           string    `bson:"isbn" json:"isbn"`
 	Authors        []string  `bson:"authors" json:"authors"`
@@ -76,6 +76,19 @@ func NewBook(id string, title, isbn string, pages, edition, copies int, authors,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
+}
+
+func buildSorter(sorter Sorter) (bson.D, error) {
+	query := bson.D{}
+
+	field, err := sorter.field()
+	if err != nil {
+		return query, err
+	} else if field == "" {
+		return query, nil
+	}
+
+	return bson.D{{Key: field, Value: sorter.sortDirection()}}, nil
 }
 
 // buildBookFilter constructs a filter query for filtering books.
@@ -206,8 +219,8 @@ func buildBookUpdater(book *Book) bson.D {
 	return update
 }
 
-// CreateUniqueISBNIndex creates a unique index using the ISBN field.
-func (b BookModel) CreateUniqueISBNIndex() error {
+// CreateUniqueIndex creates a unique index using a field.
+func (b BookModel) CreateUniqueIndex() error {
 	coll := b.Client.Database(b.Database).Collection(b.Collection)
 	indexModel := mongo.IndexModel{
 		Keys:    bson.D{{Key: isbnTag, Value: -1}},
@@ -260,9 +273,6 @@ func (b BookModel) Get(ctx context.Context, filter BookFilter) (*Book, error) {
 
 	book := &Book{}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
 	err = coll.FindOne(ctx, filterQuery).Decode(book)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -275,23 +285,34 @@ func (b BookModel) Get(ctx context.Context, filter BookFilter) (*Book, error) {
 }
 
 // GetAll retrieves all mockBooks from the database matching an optional filter and paginator.
-func (b BookModel) GetAll(ctx context.Context, filter BookFilter, paginator Paginator) ([]Book, Metadata, error) {
+func (b BookModel) GetAll(ctx context.Context, filter BookFilter, paginator Paginator, sorter Sorter) ([]Book, Metadata, error) {
 	coll := b.Client.Database(b.Database).Collection(b.Collection)
 
 	books := make([]Book, 0)
+	metadata := Metadata{}
 
-	findOpt := options.Find().SetLimit(paginator.limit()).SetSkip(paginator.offset())
 	filterQuery, err := buildBookFilter(filter)
 	if err != nil {
-		return nil, Metadata{}, fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
+		return books, Metadata{}, fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	totalRecords, err := coll.CountDocuments(ctx, filterQuery)
+	sortQuery, err := buildSorter(sorter)
 	if err != nil {
-		return books, Metadata{}, errCreatingQueryFilter
+		return books, Metadata{}, fmt.Errorf("%v: %v", errCreatingQuerySort, err)
+	}
+
+	findOpt := options.Find().SetSort(sortQuery)
+
+	if paginator.valid() {
+		var totalRecords int64
+
+		findOpt = findOpt.SetLimit(paginator.limit()).SetSkip(paginator.offset())
+		totalRecords, err = coll.CountDocuments(ctx, filterQuery)
+		if err != nil {
+			return books, Metadata{}, fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
+		}
+
+		metadata = calculateMetadata(totalRecords, paginator.Page, paginator.PageSize)
 	}
 
 	cursor, err := coll.Find(ctx, filterQuery, findOpt)
@@ -309,7 +330,9 @@ func (b BookModel) GetAll(ctx context.Context, filter BookFilter, paginator Pagi
 		books = append(books, book)
 	}
 
-	metadata := calculateMetadata(totalRecords, paginator.Page, paginator.PageSize)
+	if err = cursor.Err(); err != nil {
+		return books, Metadata{}, err
+	}
 
 	return books, metadata, nil
 }

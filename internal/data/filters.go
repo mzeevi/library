@@ -1,8 +1,18 @@
 package data
 
+import (
+	"fmt"
+	"strings"
+)
+
 type Paginator struct {
 	Page     int64
 	PageSize int64
+}
+
+type Sorter struct {
+	Field        string
+	SortSafelist []string
 }
 
 type Metadata struct {
@@ -13,12 +23,38 @@ type Metadata struct {
 	TotalRecords int64 `json:"total_records,omitempty"`
 }
 
+func (p Paginator) valid() bool {
+	return p.Page > 0 && p.PageSize > 0
+}
+
 func (p Paginator) limit() int64 {
 	return p.PageSize
 }
 
 func (p Paginator) offset() int64 {
 	return (p.Page - 1) * p.PageSize
+}
+
+func (s Sorter) field() (string, error) {
+	if s.Field == "" {
+		return "", nil
+	}
+
+	for _, safeValue := range s.SortSafelist {
+		if s.Field == safeValue {
+			return strings.TrimPrefix(s.Field, "-"), nil
+		}
+	}
+
+	return "", fmt.Errorf("unsupported sort field")
+}
+
+func (s Sorter) sortDirection() int {
+	if strings.HasPrefix(s.Field, "-") {
+		return -1
+	}
+
+	return 1
 }
 
 // calculateMetadata returns metadata regarding pagination.
