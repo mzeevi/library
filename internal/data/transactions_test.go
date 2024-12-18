@@ -10,17 +10,17 @@ import (
 var (
 	testTransactionsIDs []interface{}
 	testTransactions    = []interface{}{
-		NewTransaction("", "1", "B1", time.Date(2024, time.December, 10, 14, 0, 0, 0, time.UTC), time.Date(2024, time.December, 12, 14, 0, 0, 0, time.UTC), TransactionStatusBorrowed),
-		NewTransaction("", "2", "B2", time.Date(2024, time.December, 9, 9, 0, 0, 0, time.UTC), time.Date(2024, time.December, 11, 9, 0, 0, 0, time.UTC), TransactionStatusReturned),
-		NewTransaction("", "3", "B3", time.Date(2024, time.December, 8, 16, 0, 0, 0, time.UTC), time.Date(2024, time.December, 10, 16, 0, 0, 0, time.UTC), TransactionStatusBorrowed),
-		NewTransaction("", "4", "B4", time.Date(2024, time.December, 7, 10, 30, 0, 0, time.UTC), time.Date(2024, time.December, 9, 10, 30, 0, 0, time.UTC), TransactionStatusReturned),
-		NewTransaction("", "5", "B5", time.Date(2024, time.December, 6, 11, 45, 0, 0, time.UTC), time.Date(2024, time.December, 8, 11, 45, 0, 0, time.UTC), TransactionStatusBorrowed),
-		NewTransaction("", "6", "B6", time.Date(2024, time.December, 5, 15, 0, 0, 0, time.UTC), time.Date(2024, time.December, 7, 15, 0, 0, 0, time.UTC), TransactionStatusReturned),
-		NewTransaction("", "7", "B7", time.Date(2024, time.December, 4, 13, 0, 0, 0, time.UTC), time.Date(2024, time.December, 6, 13, 0, 0, 0, time.UTC), TransactionStatusBorrowed),
-		NewTransaction("", "8", "B8", time.Date(2024, time.December, 3, 12, 30, 0, 0, time.UTC), time.Date(2024, time.December, 5, 12, 30, 0, 0, time.UTC), TransactionStatusBorrowed),
-		NewTransaction("", "9", "B9", time.Date(2024, time.December, 2, 8, 0, 0, 0, time.UTC), time.Date(2024, time.December, 4, 8, 0, 0, 0, time.UTC), TransactionStatusReturned),
-		NewTransaction("", "10", "B10", time.Date(2024, time.December, 1, 17, 0, 0, 0, time.UTC), time.Date(2024, time.December, 3, 17, 0, 0, 0, time.UTC), TransactionStatusBorrowed),
-		NewTransaction("conflict", "11", "B11", time.Date(2024, time.December, 10, 14, 0, 0, 0, time.UTC), time.Date(2024, time.December, 12, 14, 0, 0, 0, time.UTC), TransactionStatusBorrowed),
+		NewTransaction("", "1", "B1", TransactionStatusBorrowed, time.Date(2024, time.December, 10, 14, 0, 0, 0, time.UTC), time.Date(2024, time.December, 12, 14, 0, 0, 0, time.UTC)),
+		NewTransaction("", "2", "B2", TransactionStatusReturned, time.Date(2024, time.December, 9, 9, 0, 0, 0, time.UTC), time.Date(2024, time.December, 11, 9, 0, 0, 0, time.UTC)),
+		NewTransaction("", "3", "B3", TransactionStatusBorrowed, time.Date(2024, time.December, 8, 16, 0, 0, 0, time.UTC), time.Date(2024, time.December, 10, 16, 0, 0, 0, time.UTC)),
+		NewTransaction("", "4", "B4", TransactionStatusReturned, time.Date(2024, time.December, 7, 10, 30, 0, 0, time.UTC), time.Date(2024, time.December, 9, 10, 30, 0, 0, time.UTC)),
+		NewTransaction("", "5", "B5", TransactionStatusBorrowed, time.Date(2024, time.December, 6, 11, 45, 0, 0, time.UTC), time.Date(2024, time.December, 8, 11, 45, 0, 0, time.UTC)),
+		NewTransaction("", "6", "B6", TransactionStatusReturned, time.Date(2024, time.December, 5, 15, 0, 0, 0, time.UTC), time.Date(2024, time.December, 7, 15, 0, 0, 0, time.UTC)),
+		NewTransaction("", "7", "B7", TransactionStatusBorrowed, time.Date(2024, time.December, 4, 13, 0, 0, 0, time.UTC), time.Date(2024, time.December, 6, 13, 0, 0, 0, time.UTC)),
+		NewTransaction("", "8", "B8", TransactionStatusBorrowed, time.Date(2024, time.December, 3, 12, 30, 0, 0, time.UTC), time.Date(2024, time.December, 5, 12, 30, 0, 0, time.UTC)),
+		NewTransaction("", "9", "B9", TransactionStatusReturned, time.Date(2024, time.December, 2, 8, 0, 0, 0, time.UTC), time.Date(2024, time.December, 4, 8, 0, 0, 0, time.UTC)),
+		NewTransaction("", "10", "B10", TransactionStatusBorrowed, time.Date(2024, time.December, 1, 17, 0, 0, 0, time.UTC), time.Date(2024, time.December, 3, 17, 0, 0, 0, time.UTC)),
+		NewTransaction("conflict", "11", "B11", TransactionStatusBorrowed, time.Date(2024, time.December, 10, 14, 0, 0, 0, time.UTC), time.Date(2024, time.December, 12, 14, 0, 0, 0, time.UTC)),
 	}
 )
 
@@ -157,6 +157,7 @@ func (ts *TestSuite) TestGetAllTransactions() {
 		name             string
 		filter           TransactionFilter
 		paginator        Paginator
+		sorter           Sorter
 		expectedIDs      []string
 		expectedCount    int
 		expectedMetadata Metadata
@@ -274,9 +275,10 @@ func (ts *TestSuite) TestGetAllTransactions() {
 			expectError:      false,
 		},
 		{
-			name: "FilterByReturnedAt",
+			name: "FilterByReturnedAtRange",
 			filter: TransactionFilter{
-				ReturnedAt: ptr(time.Date(2023, time.November, 10, 0, 0, 0, 0, time.UTC)),
+				MinReturnedAt: ptr(time.Date(2023, time.November, 10, 0, 0, 0, 0, time.UTC)),
+				MaxReturnedAt: ptr(time.Date(2023, time.December, 10, 0, 0, 0, 0, time.UTC)),
 			},
 			paginator:        Paginator{Page: 1, PageSize: 5},
 			expectedIDs:      []string{},
@@ -375,7 +377,7 @@ func (ts *TestSuite) TestGetAllTransactions() {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			transactions, metadata, err := ts.models.Transactions.GetAll(ts.ctx, tt.filter, tt.paginator)
+			transactions, metadata, err := ts.models.Transactions.GetAll(ts.ctx, tt.filter, tt.paginator, tt.sorter)
 
 			if tt.expectError {
 				assert.Error(t, err)

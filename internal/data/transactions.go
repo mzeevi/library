@@ -14,43 +14,43 @@ import (
 
 var (
 	errCreatingQueryFilter = errors.New("filter query builder failed")
+	errCreatingQuerySort   = errors.New("sort query builder failed")
 )
 
 const (
-	TransactionStatusBorrowed transactionStatus = "borrowed"
-	TransactionStatusReturned transactionStatus = "returned"
+	TransactionStatusBorrowed = "borrowed"
+	TransactionStatusReturned = "returned"
 )
 
-type transactionStatus string
-
 type Transaction struct {
-	ID         string            `bson:"_id,omitempty" json:"id,omitempty"`
-	PatronID   string            `bson:"patron_id" json:"patron_id"`
-	BookID     string            `bson:"book_id" json:"book_id"`
-	BorrowedAt time.Time         `bson:"borrowed_at" json:"borrowed_at"`
-	DueDate    time.Time         `bson:"due_date" json:"due_date"`
-	ReturnedAt time.Time         `bson:"returned_at,omitempty" json:"returned_at,omitempty"`
-	Status     transactionStatus `bson:"status" json:"status"`
-	CreatedAt  time.Time         `bson:"created_at" json:"created_at"`
-	UpdatedAt  time.Time         `bson:"updated_at" json:"updated_at"`
-	Version    int32             `json:"version,omitempty"`
+	ID         string    `bson:"_id,omitempty" json:"id,omitempty"`
+	PatronID   string    `bson:"patron_id" json:"patron_id"`
+	BookID     string    `bson:"book_id" json:"book_id"`
+	Status     string    `bson:"status" json:"status"`
+	BorrowedAt time.Time `bson:"borrowed_at" json:"borrowed_at"`
+	DueDate    time.Time `bson:"due_date" json:"due_date"`
+	ReturnedAt time.Time `bson:"returned_at,omitempty" json:"returned_at,omitempty"`
+	CreatedAt  time.Time `bson:"created_at" json:"-"`
+	UpdatedAt  time.Time `bson:"updated_at" json:"-"`
+	Version    int32     `bson:"version" json:"-"`
 }
 
 type TransactionFilter struct {
-	ID            *string            `json:"id,omitempty"`
-	PatronID      *string            `json:"patron_id,omitempty"`
-	BookID        *string            `json:"book_id,omitempty"`
-	MinBorrowedAt *time.Time         `json:"min_borrowed_at,omitempty"`
-	MaxBorrowedAt *time.Time         `json:"max_borrowed_at,omitempty"`
-	MinDueDate    *time.Time         `json:"min_due_date,omitempty"`
-	MaxDueDate    *time.Time         `json:"max_due_date,omitempty"`
-	ReturnedAt    *time.Time         `json:"returned_at,omitempty"`
-	Status        *transactionStatus `json:"status,omitempty"`
-	MinCreatedAt  *time.Time         `json:"min_created_at,omitempty"`
-	MaxCreatedAt  *time.Time         `json:"max_created_at,omitempty"`
-	MinUpdatedAt  *time.Time         `json:"min_updated_at,omitempty"`
-	MaxUpdatedAt  *time.Time         `json:"max_updated_at,omitempty"`
-	Version       *int32             `json:"version,omitempty"`
+	ID            *string    `json:"id,omitempty"`
+	PatronID      *string    `json:"patron_id,omitempty"`
+	BookID        *string    `json:"book_id,omitempty"`
+	Status        *string    `json:"status,omitempty"`
+	MinBorrowedAt *time.Time `json:"min_borrowed_at,omitempty"`
+	MaxBorrowedAt *time.Time `json:"max_borrowed_at,omitempty"`
+	MinDueDate    *time.Time `json:"min_due_date,omitempty"`
+	MaxDueDate    *time.Time `json:"max_due_date,omitempty"`
+	MinReturnedAt *time.Time `json:"min_returned_at,omitempty"`
+	MaxReturnedAt *time.Time `json:"max_returned_at,omitempty"`
+	MinCreatedAt  *time.Time `json:"min_created_at,omitempty"`
+	MaxCreatedAt  *time.Time `json:"max_created_at,omitempty"`
+	MinUpdatedAt  *time.Time `json:"min_updated_at,omitempty"`
+	MaxUpdatedAt  *time.Time `json:"max_updated_at,omitempty"`
+	Version       *int32     `json:"-,omitempty"`
 }
 
 type TransactionModel struct {
@@ -60,7 +60,7 @@ type TransactionModel struct {
 }
 
 // NewTransaction is a constructor for Transaction.
-func NewTransaction(id, patronID, bookID string, borrowedAt, dueDate time.Time, status transactionStatus) *Transaction {
+func NewTransaction(id, patronID, bookID, status string, borrowedAt, dueDate time.Time) *Transaction {
 	now := time.Now()
 	return &Transaction{
 		ID:         id,
@@ -94,8 +94,16 @@ func buildTransactionFilter(filter TransactionFilter) (bson.M, error) {
 	if filter.Status != nil {
 		query[statusTag] = *filter.Status
 	}
-	if filter.ReturnedAt != nil {
-		query[returnedAtTag] = *filter.ReturnedAt
+
+	if filter.MinReturnedAt != nil || filter.MaxReturnedAt != nil {
+		returnedAtRange := bson.M{}
+		if filter.MinReturnedAt != nil {
+			returnedAtRange["$gte"] = *filter.MinReturnedAt
+		}
+		if filter.MaxReturnedAt != nil {
+			returnedAtRange["$lte"] = *filter.MaxReturnedAt
+		}
+		query[borrowedAtTag] = returnedAtRange
 	}
 
 	if filter.MinBorrowedAt != nil || filter.MaxBorrowedAt != nil {
@@ -128,7 +136,7 @@ func buildTransactionFilter(filter TransactionFilter) (bson.M, error) {
 		if filter.MaxCreatedAt != nil {
 			createdAtRange["$lte"] = *filter.MaxCreatedAt
 		}
-		query[createdAt] = createdAtRange
+		query[createdAtTag] = createdAtRange
 	}
 
 	if filter.MinUpdatedAt != nil || filter.MaxUpdatedAt != nil {
@@ -216,24 +224,38 @@ func (t TransactionModel) Get(ctx context.Context, filter TransactionFilter) (*T
 }
 
 // GetAll retrieves all Transactions from the database matching an optional filter and paginator.
-func (t TransactionModel) GetAll(ctx context.Context, filter TransactionFilter, paginator Paginator) ([]Transaction, Metadata, error) {
+func (t TransactionModel) GetAll(ctx context.Context, filter TransactionFilter, paginator Paginator, sorter Sorter) ([]Transaction, Metadata, error) {
 	coll := t.Client.Database(t.Database).Collection(t.Collection)
 
 	transactions := make([]Transaction, 0)
+	metadata := Metadata{}
 
-	findOpt := options.Find().SetLimit(paginator.limit()).SetSkip(paginator.offset())
 	filterQuery, err := buildTransactionFilter(filter)
 	if err != nil {
 		return transactions, Metadata{}, fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
 
+	sortQuery, err := buildSorter(sorter)
+	if err != nil {
+		return nil, Metadata{}, fmt.Errorf("%v: %v", errCreatingQuerySort, err)
+	}
+
+	findOpt := options.Find().SetSort(sortQuery)
+
+	if paginator.valid() {
+		var totalRecords int64
+
+		findOpt = findOpt.SetLimit(paginator.limit()).SetSkip(paginator.offset())
+		totalRecords, err = coll.CountDocuments(ctx, filterQuery)
+		if err != nil {
+			return transactions, Metadata{}, errCreatingQueryFilter
+		}
+
+		metadata = calculateMetadata(totalRecords, paginator.Page, paginator.PageSize)
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
-	totalRecords, err := coll.CountDocuments(ctx, filterQuery)
-	if err != nil {
-		return transactions, Metadata{}, errCreatingQueryFilter
-	}
 
 	cursor, err := coll.Find(ctx, filterQuery, findOpt)
 	if err != nil {
@@ -250,7 +272,9 @@ func (t TransactionModel) GetAll(ctx context.Context, filter TransactionFilter, 
 		transactions = append(transactions, transaction)
 	}
 
-	metadata := calculateMetadata(totalRecords, paginator.Page, paginator.PageSize)
+	if err = cursor.Err(); err != nil {
+		return transactions, Metadata{}, err
+	}
 
 	return transactions, metadata, nil
 }

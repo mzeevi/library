@@ -18,26 +18,23 @@ var (
 
 const (
 	idTag        = "_id"
-	createdAt    = "created_at"
+	createdAtTag = "created_at"
 	updatedAtTag = "updated_at"
 )
 
 const (
-	patronIDTag           = "patron_id"
-	bookIDTag             = "book_id"
-	borrowedAtTag         = "borrowed_at"
-	dueDateTag            = "due_date"
-	returnedAtTag         = "returned_at"
-	statusTag             = "status"
-	typeTag               = "type"
-	discountPercentageTag = "discount_percentage"
+	patronIDTag   = "patron_id"
+	bookIDTag     = "book_id"
+	borrowedAtTag = "borrowed_at"
+	dueDateTag    = "due_date"
+	returnedAtTag = "returned_at"
+	statusTag     = "status"
 )
 
 const (
 	pagesTag          = "pages"
 	editionTag        = "edition"
 	publishedAtTag    = "published_at"
-	createdAtTag      = "created_at"
 	titleTag          = "title"
 	isbnTag           = "isbn"
 	authorsTag        = "authors"

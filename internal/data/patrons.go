@@ -12,33 +12,26 @@ import (
 	"time"
 )
 
-const (
-	Teacher PatronCategoryType = "teacher"
-	Student PatronCategoryType = "student"
-)
-
-type PatronCategoryType string
-
 type Patron struct {
-	ID        string         `bson:"_id,omitempty" json:"id,omitempty"`
-	Name      string         `bson:"name" json:"name"`
-	Email     string         `bson:"email" json:"email"`
-	CreatedAt time.Time      `bson:"created_at" json:"created_at"`
-	UpdatedAt time.Time      `bson:"updated_at" json:"updated_at"`
-	Category  PatronCategory `bson:"category" json:"category"`
-	Version   int32          `bson:"version" json:"-"`
+	ID        string    `bson:"_id,omitempty" json:"id,omitempty"`
+	Name      string    `bson:"name" json:"name"`
+	Email     string    `bson:"email" json:"email"`
+	Category  string    `bson:"category" json:"category"`
+	Version   int32     `bson:"version" json:"-"`
+	CreatedAt time.Time `bson:"created_at" json:"-"`
+	UpdatedAt time.Time `bson:"updated_at" json:"-"`
 }
 
 type PatronFilter struct {
-	ID           *string        `json:"id,omitempty"`
-	MinCreatedAt *time.Time     `json:"min_created_at,omitempty"`
-	MaxCreatedAt *time.Time     `json:"max_created_at,omitempty"`
-	MinUpdatedAt *time.Time     `json:"min_updated_at,omitempty"`
-	MaxUpdatedAt *time.Time     `json:"max_updated_at,omitempty"`
-	Name         *string        `json:"name,omitempty"`
-	Email        *string        `json:"email,omitempty"`
-	Category     PatronCategory `json:"category,omitempty"`
-	Version      *int32         `json:"version,omitempty"`
+	ID           *string    `json:"id,omitempty"`
+	Name         *string    `json:"name,omitempty"`
+	Email        *string    `json:"email,omitempty"`
+	Category     *string    `json:"category,omitempty"`
+	Version      *int32     `json:"version,omitempty"`
+	MinCreatedAt *time.Time `json:"min_created_at,omitempty"`
+	MaxCreatedAt *time.Time `json:"max_created_at,omitempty"`
+	MinUpdatedAt *time.Time `json:"min_updated_at,omitempty"`
+	MaxUpdatedAt *time.Time `json:"max_updated_at,omitempty"`
 }
 
 type PatronModel struct {
@@ -47,39 +40,8 @@ type PatronModel struct {
 	Collection string
 }
 
-type PatronCategory interface {
-	Discount() float64
-	Type() PatronCategoryType
-}
-
-type TeacherCategory struct {
-	CategoryType       PatronCategoryType `bson:"type" json:"type"`
-	DiscountPercentage float64            `bson:"discount_percentage" json:"discount_percentage"`
-}
-
-type StudentCategory struct {
-	CategoryType       PatronCategoryType `bson:"type" json:"type"`
-	DiscountPercentage float64            `bson:"discount_percentage" json:"discount_percentage"`
-}
-
-func (t TeacherCategory) Discount() float64 {
-	return t.DiscountPercentage / 100
-}
-
-func (t TeacherCategory) Type() PatronCategoryType {
-	return t.CategoryType
-}
-
-func (s StudentCategory) Discount() float64 {
-	return s.DiscountPercentage / 100
-}
-
-func (s StudentCategory) Type() PatronCategoryType {
-	return s.CategoryType
-}
-
 // NewPatron is a constructor for Patron.
-func NewPatron(id string, name, email string, category PatronCategory) *Patron {
+func NewPatron(id string, name, email, category string) *Patron {
 	now := time.Now()
 
 	return &Patron{
@@ -111,7 +73,7 @@ func buildPatronFilter(filter PatronFilter) (bson.M, error) {
 		if filter.MaxCreatedAt != nil {
 			createdAtRange["$lte"] = *filter.MaxCreatedAt
 		}
-		query[createdAt] = createdAtRange
+		query[createdAtTag] = createdAtRange
 	}
 	if filter.MinUpdatedAt != nil || filter.MaxUpdatedAt != nil {
 		updatedAtRange := bson.M{}
@@ -130,16 +92,7 @@ func buildPatronFilter(filter PatronFilter) (bson.M, error) {
 		query[emailTag] = *filter.Email
 	}
 	if filter.Category != nil {
-		categoryFilter := bson.M{}
-		switch v := filter.Category.(type) {
-		case TeacherCategory:
-			categoryFilter[typeTag] = v.Type()
-			categoryFilter[discountPercentageTag] = v.DiscountPercentage
-		case StudentCategory:
-			categoryFilter[typeTag] = v.Type()
-			categoryFilter[discountPercentageTag] = v.DiscountPercentage
-		}
-		query[categoryTag] = categoryFilter
+		query[categoryTag] = *filter.Category
 	}
 	if filter.Version != nil {
 		query[versionTag] = *filter.Version
@@ -164,6 +117,22 @@ func buildPatronUpdater(patron *Patron) bson.D {
 	}
 
 	return update
+}
+
+// CreateUniqueIndex creates a unique index using a field.
+func (p PatronModel) CreateUniqueIndex() error {
+	coll := p.Client.Database(p.Database).Collection(p.Collection)
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: emailTag, Value: -1}},
+		Options: options.Index().SetUnique(true),
+	}
+
+	_, err := coll.Indexes().CreateOne(context.TODO(), indexModel)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Insert inserts a new Patron into the database.
@@ -217,24 +186,35 @@ func (p PatronModel) Get(ctx context.Context, filter PatronFilter) (*Patron, err
 	return patron, nil
 }
 
-// GetAll retrieves all mockBooks from the database matching an optional filter and paginator.
-func (p PatronModel) GetAll(ctx context.Context, filter PatronFilter, paginator Paginator) ([]Patron, Metadata, error) {
+// GetAll retrieves all patrons from the database matching an optional filter and paginator.
+func (p PatronModel) GetAll(ctx context.Context, filter PatronFilter, paginator Paginator, sorter Sorter) ([]Patron, Metadata, error) {
 	coll := p.Client.Database(p.Database).Collection(p.Collection)
 
 	patrons := make([]Patron, 0)
+	metadata := Metadata{}
 
-	findOpt := options.Find().SetLimit(paginator.limit()).SetSkip(paginator.offset())
 	filterQuery, err := buildPatronFilter(filter)
 	if err != nil {
 		return patrons, Metadata{}, fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	totalRecords, err := coll.CountDocuments(ctx, filterQuery)
+	sortQuery, err := buildSorter(sorter)
 	if err != nil {
-		return patrons, Metadata{}, errCreatingQueryFilter
+		return patrons, Metadata{}, fmt.Errorf("%v: %v", errCreatingQuerySort, err)
+	}
+
+	findOpt := options.Find().SetSort(sortQuery)
+
+	if paginator.valid() {
+		var totalRecords int64
+
+		findOpt = findOpt.SetLimit(paginator.limit()).SetSkip(paginator.offset())
+		totalRecords, err = coll.CountDocuments(ctx, filterQuery)
+		if err != nil {
+			return patrons, Metadata{}, fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
+		}
+
+		metadata = calculateMetadata(totalRecords, paginator.Page, paginator.PageSize)
 	}
 
 	cursor, err := coll.Find(ctx, filterQuery, findOpt)
@@ -252,7 +232,9 @@ func (p PatronModel) GetAll(ctx context.Context, filter PatronFilter, paginator 
 		patrons = append(patrons, patron)
 	}
 
-	metadata := calculateMetadata(totalRecords, paginator.Page, paginator.PageSize)
+	if err = cursor.Err(); err != nil {
+		return patrons, Metadata{}, err
+	}
 
 	return patrons, metadata, nil
 }
