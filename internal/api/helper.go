@@ -1,8 +1,10 @@
 package api
 
 import (
+	"fmt"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/mzeevi/library/internal/data"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"regexp"
 	"time"
 )
@@ -43,25 +45,68 @@ func calculateFine(transaction data.Transaction, overdueFine float64) (fine floa
 }
 
 // validateEmail validates an email address against a predefined regular expression.
-func validateEmail(email *string) error {
+func validateEmail(email *string, location string) error {
 	if email == nil {
 		return nil
 	}
 	matched, err := regexp.MatchString(emailRX, *email)
 	if err != nil {
 		return &huma.ErrorDetail{
-			Location: "body.email",
+			Location: location,
 			Message:  "Error parsing",
 			Value:    *email,
 		}
 	}
 	if !matched {
 		return &huma.ErrorDetail{
-			Location: "body.email",
+			Location: location,
 			Message:  "Invalid email address",
 			Value:    *email,
 		}
 	}
+	return nil
+}
+
+// validateEmail validates an ID.
+func validateID(id *string, location string) error {
+	if id == nil {
+		return nil
+	}
+
+	_, err := primitive.ObjectIDFromHex(*id)
+	if err != nil {
+		return &huma.ErrorDetail{
+			Location: location,
+			Message:  "Invalid ID",
+			Value:    *id,
+		}
+	}
+
+	return nil
+}
+
+// validateDueDate checks if the due date is valid, ensuring it is between 1 and 14 days from today.
+func validateDueDate(t *time.Time, location string) error {
+	if t == nil {
+		return nil
+	}
+
+	oneDayFromNow := time.Now().Add(24 * time.Hour)
+	twoWeeksFromNow := time.Now().Add(14 * 24 * time.Hour)
+
+	valid := (*t).After(oneDayFromNow) && (*t).Before(twoWeeksFromNow)
+	if !valid {
+		return &huma.ErrorDetail{
+			Location: location,
+			Message: fmt.Sprintf(
+				"Due date must be at least 1 day (after %s) and no more than 14 days (before %s) from today",
+				oneDayFromNow.Format(time.RFC3339),
+				twoWeeksFromNow.Format(time.RFC3339),
+			),
+			Value: *t,
+		}
+	}
+
 	return nil
 }
 
