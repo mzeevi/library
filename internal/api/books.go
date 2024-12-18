@@ -77,6 +77,24 @@ type DeleteBookOutput struct {
 	Body string `json:"message"`
 }
 
+func (b *GetBookInput) Resolve(ctx huma.Context) []error {
+	return []error{
+		validateID(&b.ID, "path.id"),
+	}
+}
+
+func (b *UpdateBookInput) Resolve(ctx huma.Context) []error {
+	return []error{
+		validateID(&b.ID, "path.id"),
+	}
+}
+
+func (b *DeleteBookInput) Resolve(ctx huma.Context) []error {
+	return []error{
+		validateID(&b.ID, "path.id"),
+	}
+}
+
 // getBookHandler retrieves a book by its ID.
 func (app *Application) getBookHandler(ctx context.Context, input *GetBookInput) (*GetBookOutput, error) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)

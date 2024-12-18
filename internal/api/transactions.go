@@ -78,38 +78,35 @@ type DeleteTransactionOutput struct {
 	Body string `json:"message"`
 }
 
+// Resolve validates the input in ReturnBookTransactionInput.
+func (t *ReturnBookTransactionInput) Resolve(ctx huma.Context) []error {
+	return []error{
+		validateID(&t.Body.BookID, "body.bookID"),
+		validateID(&t.Body.PatronID, "body.PatronID"),
+	}
+}
+
 // Resolve validates the input in BorrowBookTransactionInput.
 func (t *BorrowBookTransactionInput) Resolve(ctx huma.Context) []error {
-	return validateDueDate(&t.Body.DueDate)
+	return []error{
+		validateID(&t.Body.BookID, "body.bookID"),
+		validateID(&t.Body.PatronID, "body.PatronID"),
+		validateDueDate(&t.Body.DueDate, "body.dueDate"),
+	}
 }
 
 // Resolve validates the input in UpdateTransactionInput.
 func (t *UpdateTransactionInput) Resolve(ctx huma.Context) []error {
-	return validateDueDate(t.Body.DueDate)
+	return []error{
+		validateDueDate(t.Body.DueDate, "body.dueDate"),
+	}
 }
 
-// validateDueDate checks if the due date is valid, ensuring it is between 1 and 14 days from today.
-func validateDueDate(t *time.Time) []error {
-	if t == nil {
-		return nil
+// Resolve validates the input in DeleteTransactionInput.
+func (t *DeleteTransactionInput) Resolve(ctx huma.Context) []error {
+	return []error{
+		validateID(&t.ID, "path.ID"),
 	}
-
-	oneDayFromNow := time.Now().Add(24 * time.Hour)
-	twoWeeksFromNow := time.Now().Add(14 * 24 * time.Hour)
-
-	valid := (*t).After(oneDayFromNow) && (*t).Before(twoWeeksFromNow)
-	if !valid {
-		return []error{&huma.ErrorDetail{
-			Location: "body.dueDate",
-			Message: fmt.Sprintf(
-				"Due date must be at least 1 day (after %s) and no more than 14 days (before %s) from today",
-				oneDayFromNow.Format(time.RFC3339),
-				twoWeeksFromNow.Format(time.RFC3339),
-			),
-			Value: *t,
-		}}
-	}
-	return nil
 }
 
 // getTransactionHandler handles a request to fetch a single transaction by ID.

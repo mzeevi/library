@@ -75,14 +75,31 @@ type DeletePatronOutput struct {
 	Body string `json:"message"`
 }
 
+func (p *GetPatronInput) Resolve(ctx huma.Context) []error {
+	return []error{
+		validateID(&p.ID, "path.id"),
+	}
+}
+
+func (p *DeletePatronInput) Resolve(ctx huma.Context) []error {
+	return []error{
+		validateID(&p.ID, "path.id"),
+	}
+}
+
 // Resolve validates the input in CreatePatronInput.
 func (p *CreatePatronInput) Resolve(ctx huma.Context) []error {
-	return []error{validateEmail(&p.Body.Email)}
+	return []error{
+		validateEmail(&p.Body.Email, "body.email"),
+	}
 }
 
 // Resolve validates the input in UpdatePatronInput.
 func (p *UpdatePatronInput) Resolve(ctx huma.Context) []error {
-	return []error{validateEmail(p.Body.Email)}
+	return []error{
+		validateID(&p.ID, "body.path"),
+		validateEmail(p.Body.Email, "body.email"),
+	}
 }
 
 // getPatronHandler retrieves a single patron by ID.

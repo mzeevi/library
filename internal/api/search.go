@@ -99,7 +99,7 @@ func (s *SearchPatronsInput) Resolve(ctx huma.Context) []error {
 	}
 
 	if s.Email != nil {
-		errs = append(errs, validateEmail(s.Email))
+		errs = append(errs, validateEmail(s.Email, "body.email"))
 	}
 
 	if category, err := resolveStringQuery(ctx, categoryQuery); err != nil {
