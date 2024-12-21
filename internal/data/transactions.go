@@ -183,9 +183,6 @@ func (t TransactionModel) Insert(ctx context.Context, transaction *Transaction) 
 	transaction.CreatedAt = now
 	transaction.UpdatedAt = now
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
 	res, err := coll.InsertOne(ctx, transaction)
 	if err != nil {
 		switch {
@@ -209,9 +206,6 @@ func (t TransactionModel) Get(ctx context.Context, filter TransactionFilter) (*T
 	}
 
 	transaction := &Transaction{}
-
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	if err = coll.FindOne(ctx, filterQuery).Decode(transaction); err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
@@ -254,9 +248,6 @@ func (t TransactionModel) GetAll(ctx context.Context, filter TransactionFilter, 
 		metadata = calculateMetadata(totalRecords, paginator.Page, paginator.PageSize)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
 	cursor, err := coll.Find(ctx, filterQuery, findOpt)
 	if err != nil {
 		return transactions, Metadata{}, err
@@ -291,9 +282,6 @@ func (t TransactionModel) Update(ctx context.Context, filter TransactionFilter, 
 		return fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
 	result, err := coll.UpdateOne(ctx, filterQuery, update)
 	if err != nil {
 		return err
@@ -314,9 +302,6 @@ func (t TransactionModel) Delete(ctx context.Context, filter TransactionFilter) 
 	if err != nil {
 		return fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	result, err := coll.DeleteOne(ctx, filterQuery)
 	if err != nil {

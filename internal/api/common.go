@@ -5,49 +5,14 @@ import (
 )
 
 const (
+	errNotFoundMsg        = "the requested resource could not be found"
+	errConflictMsg        = "unable to update the record due to an edit conflict, please try again"
+	errIDAlreadyExistsMsg = "a resource with this ID address already exists"
+)
+
+const (
 	studentCategory = "student"
 	teacherCategory = "teacher"
-)
-
-const (
-	errNotFoundMsg = "the requested resource could not be found"
-	errConflictMsg = "unable to update the record due to an edit conflict, please try again"
-)
-
-const (
-	queryKey = "query"
-
-	minPagesQuery          = "min_pages"
-	maxPagesQuery          = "max_pages"
-	minEditionQuery        = "min_edition"
-	maxEditionQuery        = "max_edition"
-	minPublishedAtQuery    = "min_published_at"
-	maxPublishedAtQuery    = "max_published_at"
-	titleQuery             = "title"
-	isbnQuery              = "isbn"
-	authorsQuery           = "authors"
-	publishersQuery        = "publishers"
-	genresQuery            = "genres"
-	minCopiesQuery         = "min_copies"
-	maxCopiesQuery         = "max_copies"
-	minBorrowedCopiesQuery = "min_borrowed_copies"
-	maxBorrowedCopiesQuery = "max_borrowed_copies"
-
-	patronIDQuery      = "patron_id"
-	bookIDQuery        = "book_id"
-	statusQuery        = "status"
-	minBorrowedAtQuery = "min_borrowed_at"
-	maxBorrowedAtQuery = "max_borrowed_at"
-	minDueDateQuery    = "min_due_date"
-	maxDueDateQuery    = "max_due_date"
-	minReturnedAtQuery = "min_returned_at"
-	maxReturnedAtQuery = "max_returned_at"
-	minCreatedAtQuery  = "min_created_at"
-	maxCreatedAtQuery  = "max_created_at"
-
-	categoryQuery = "category"
-	nameQuery     = "name"
-	emailQuery    = "email"
 )
 
 var (

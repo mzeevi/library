@@ -2,6 +2,7 @@ package data
 
 import (
 	"fmt"
+	"go.mongodb.org/mongo-driver/bson"
 	"strings"
 )
 
@@ -70,4 +71,18 @@ func calculateMetadata(totalRecords, page, pageSize int64) Metadata {
 		LastPage:     (totalRecords + pageSize - 1) / pageSize,
 		TotalRecords: totalRecords,
 	}
+}
+
+// buildSorter constructs a sort query for sorting.
+func buildSorter(sorter Sorter) (bson.D, error) {
+	query := bson.D{}
+
+	field, err := sorter.field()
+	if err != nil {
+		return query, err
+	} else if field == "" {
+		return query, nil
+	}
+
+	return bson.D{{Key: field, Value: sorter.sortDirection()}}, nil
 }

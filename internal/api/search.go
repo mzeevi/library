@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/mzeevi/library/internal/data"
+	"github.com/mzeevi/library/internal/query"
 	"time"
 )
 
@@ -76,7 +77,7 @@ type SearchTransactionsOutput struct {
 func (s *SearchPatronsInput) Resolve(ctx huma.Context) []error {
 	var errs []error
 
-	if name, err := resolveStringQuery(ctx, nameQuery); err != nil {
+	if name, err := query.ResolveString(ctx, query.NameKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.Name = name
@@ -85,14 +86,14 @@ func (s *SearchPatronsInput) Resolve(ctx huma.Context) []error {
 	if s.Name != nil {
 		if len(*s.Name) < 1 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, nameQuery),
-				Message:  fmt.Sprintf(errMinLengthMsg, nameQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.NameKey),
+				Message:  fmt.Sprintf(errMinLengthMsg, query.NameKey),
 				Value:    *s.Name,
 			})
 		}
 	}
 
-	if email, err := resolveStringQuery(ctx, emailQuery); err != nil {
+	if email, err := query.ResolveString(ctx, query.EmailKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.Email = email
@@ -102,7 +103,7 @@ func (s *SearchPatronsInput) Resolve(ctx huma.Context) []error {
 		errs = append(errs, validateEmail(s.Email, "body.email"))
 	}
 
-	if category, err := resolveStringQuery(ctx, categoryQuery); err != nil {
+	if category, err := query.ResolveString(ctx, query.CategoryKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.Category = category
@@ -111,8 +112,8 @@ func (s *SearchPatronsInput) Resolve(ctx huma.Context) []error {
 	if s.Category != nil {
 		if *s.Category != studentCategory && *s.Category != teacherCategory {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, categoryQuery),
-				Message:  fmt.Sprintf(errMustEqualOneOfMsg, categoryQuery, studentCategory, teacherCategory),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.CategoryKey),
+				Message:  fmt.Sprintf(errMustEqualOneOfMsg, query.CategoryKey, studentCategory, teacherCategory),
 				Value:    *s.Category,
 			})
 		}
@@ -125,33 +126,33 @@ func (s *SearchPatronsInput) Resolve(ctx huma.Context) []error {
 func (s *SearchTransactionsInput) Resolve(ctx huma.Context) []error {
 	var errs []error
 
-	if patronID, err := resolveStringQuery(ctx, patronIDQuery); err != nil {
+	if patronID, err := query.ResolveString(ctx, query.PatronIDKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.PatronID = patronID
 	}
 	if s.PatronID != nil && len(*s.PatronID) < 1 {
 		errs = append(errs, &huma.ErrorDetail{
-			Location: fmt.Sprintf("%s.%s", queryKey, patronIDQuery),
-			Message:  fmt.Sprintf(errMinLengthMsg, patronIDQuery),
+			Location: fmt.Sprintf("%s.%s", query.Key, query.PatronIDKey),
+			Message:  fmt.Sprintf(errMinLengthMsg, query.PatronIDKey),
 			Value:    *s.PatronID,
 		})
 	}
 
-	if bookID, err := resolveStringQuery(ctx, bookIDQuery); err != nil {
+	if bookID, err := query.ResolveString(ctx, query.BookIDKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.BookID = bookID
 	}
 	if s.BookID != nil && len(*s.BookID) < 1 {
 		errs = append(errs, &huma.ErrorDetail{
-			Location: fmt.Sprintf("%s.%s", queryKey, bookIDQuery),
-			Message:  fmt.Sprintf(errMinLengthMsg, bookIDQuery),
+			Location: fmt.Sprintf("%s.%s", query.Key, query.BookIDKey),
+			Message:  fmt.Sprintf(errMinLengthMsg, query.BookIDKey),
 			Value:    *s.BookID,
 		})
 	}
 
-	if status, err := resolveStringQuery(ctx, statusQuery); err != nil {
+	if status, err := query.ResolveString(ctx, query.StatusKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.Status = status
@@ -159,20 +160,20 @@ func (s *SearchTransactionsInput) Resolve(ctx huma.Context) []error {
 	if s.Status != nil {
 		if *s.Status != string(data.TransactionStatusReturned) && *s.Status != string(data.TransactionStatusBorrowed) {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, statusQuery),
-				Message:  fmt.Sprintf(errMustEqualOneOfMsg, statusQuery, data.TransactionStatusReturned, data.TransactionStatusBorrowed),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.StatusKey),
+				Message:  fmt.Sprintf(errMustEqualOneOfMsg, query.StatusKey, data.TransactionStatusReturned, data.TransactionStatusBorrowed),
 				Value:    *s.Status,
 			})
 		}
 	}
 
-	if minBorrowedAt, err := resolveTimeQuery(ctx, minBorrowedAtQuery); err != nil {
+	if minBorrowedAt, err := query.ResolveTime(ctx, query.MinBorrowedAtKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MinBorrowedAt = minBorrowedAt
 	}
 
-	if maxBorrowedAt, err := resolveTimeQuery(ctx, maxBorrowedAtQuery); err != nil {
+	if maxBorrowedAt, err := query.ResolveTime(ctx, query.MaxBorrowedAtKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MaxBorrowedAt = maxBorrowedAt
@@ -180,20 +181,20 @@ func (s *SearchTransactionsInput) Resolve(ctx huma.Context) []error {
 	if s.MinBorrowedAt != nil && s.MaxBorrowedAt != nil {
 		if s.MinBorrowedAt.After(*s.MaxBorrowedAt) {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s, %s.%s", queryKey, minBorrowedAtQuery, queryKey, maxBorrowedAtQuery),
-				Message:  fmt.Sprintf(errMinMaxLaterMsg, minBorrowedAtQuery, maxBorrowedAtQuery),
+				Location: fmt.Sprintf("%s.%s, %s.%s", query.Key, query.MinBorrowedAtKey, query.Key, query.MaxBorrowedAtKey),
+				Message:  fmt.Sprintf(errMinMaxLaterMsg, query.MinBorrowedAtKey, query.MaxBorrowedAtKey),
 				Value:    s.MinBorrowedAt,
 			})
 		}
 	}
 
-	if minDueDate, err := resolveTimeQuery(ctx, minDueDateQuery); err != nil {
+	if minDueDate, err := query.ResolveTime(ctx, query.MinDueDateKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MinDueDate = minDueDate
 	}
 
-	if maxDueDate, err := resolveTimeQuery(ctx, maxDueDateQuery); err != nil {
+	if maxDueDate, err := query.ResolveTime(ctx, query.MaxDueDateKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MaxDueDate = maxDueDate
@@ -201,32 +202,32 @@ func (s *SearchTransactionsInput) Resolve(ctx huma.Context) []error {
 	if s.MinDueDate != nil && s.MaxDueDate != nil {
 		if s.MinDueDate.After(*s.MaxDueDate) {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s, %s.%s", queryKey, minDueDateQuery, queryKey, maxDueDateQuery),
-				Message:  fmt.Sprintf(errMinMaxLaterMsg, minDueDateQuery, maxDueDateQuery),
+				Location: fmt.Sprintf("%s.%s, %s.%s", query.Key, query.MinDueDateKey, query.Key, query.MaxDueDateKey),
+				Message:  fmt.Sprintf(errMinMaxLaterMsg, query.MinDueDateKey, query.MaxDueDateKey),
 				Value:    s.MinDueDate,
 			})
 		}
 	}
 
-	if minReturnedAt, err := resolveTimeQuery(ctx, minReturnedAtQuery); err != nil {
+	if minReturnedAt, err := query.ResolveTime(ctx, query.MinReturnedAtKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MinReturnedAt = minReturnedAt
 	}
 
-	if maxReturnedAt, err := resolveTimeQuery(ctx, maxReturnedAtQuery); err != nil {
+	if maxReturnedAt, err := query.ResolveTime(ctx, query.MaxReturnedAtKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MaxReturnedAt = maxReturnedAt
 	}
 
-	if minCreatedAt, err := resolveTimeQuery(ctx, minCreatedAtQuery); err != nil {
+	if minCreatedAt, err := query.ResolveTime(ctx, query.MinCreatedAtKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MinCreatedAt = minCreatedAt
 	}
 
-	if maxCreatedAt, err := resolveTimeQuery(ctx, maxCreatedAtQuery); err != nil {
+	if maxCreatedAt, err := query.ResolveTime(ctx, query.MaxCreatedAtKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MaxCreatedAt = maxCreatedAt
@@ -234,8 +235,8 @@ func (s *SearchTransactionsInput) Resolve(ctx huma.Context) []error {
 	if s.MinCreatedAt != nil && s.MaxCreatedAt != nil {
 		if s.MinCreatedAt.After(*s.MaxCreatedAt) {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s, %s.%s", queryKey, minCreatedAtQuery, queryKey, maxCreatedAtQuery),
-				Message:  fmt.Sprintf(errMinMaxLaterMsg, minCreatedAtQuery, maxCreatedAtQuery),
+				Location: fmt.Sprintf("%s.%s, %s.%s", query.Key, query.MinCreatedAtKey, query.Key, query.MaxCreatedAtKey),
+				Message:  fmt.Sprintf(errMinMaxLaterMsg, query.MinCreatedAtKey, query.MaxCreatedAtKey),
 				Value:    s.MinCreatedAt,
 			})
 		}
@@ -248,13 +249,13 @@ func (s *SearchTransactionsInput) Resolve(ctx huma.Context) []error {
 func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	var errs []error
 
-	if minPages, err := resolveIntQuery(ctx, minPagesQuery); err != nil {
+	if minPages, err := query.ResolveInt(ctx, query.MinPagesKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MinPages = minPages
 	}
 
-	if maxPages, err := resolveIntQuery(ctx, maxPagesQuery); err != nil {
+	if maxPages, err := query.ResolveInt(ctx, query.MaxPagesKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MaxPages = maxPages
@@ -263,8 +264,8 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MinPages != nil {
 		if *s.MinPages <= 0 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, minPagesQuery),
-				Message:  fmt.Sprintf(errPositiveIntegerMsg, minPagesQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.MinPagesKey),
+				Message:  fmt.Sprintf(errPositiveIntegerMsg, query.MinPagesKey),
 				Value:    *s.MinPages,
 			})
 		}
@@ -273,8 +274,8 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MaxPages != nil {
 		if *s.MaxPages <= 0 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, maxPagesQuery),
-				Message:  fmt.Sprintf(errPositiveIntegerMsg, maxPagesQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.MaxPagesKey),
+				Message:  fmt.Sprintf(errPositiveIntegerMsg, query.MaxPagesKey),
 				Value:    *s.MaxPages,
 			})
 		}
@@ -282,20 +283,20 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MinPages != nil && s.MaxPages != nil {
 		if *s.MinPages > *s.MaxPages {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s, %s.%s", queryKey, minPagesQuery, queryKey, maxPagesQuery),
-				Message:  fmt.Sprintf(errMinMaxGreaterMsg, minPagesQuery, maxPagesQuery),
+				Location: fmt.Sprintf("%s.%s, %s.%s", query.Key, query.MinPagesKey, query.Key, query.MaxPagesKey),
+				Message:  fmt.Sprintf(errMinMaxGreaterMsg, query.MinPagesKey, query.MaxPagesKey),
 				Value:    *s.MinPages,
 			})
 		}
 	}
 
-	if minEdition, err := resolveIntQuery(ctx, minEditionQuery); err != nil {
+	if minEdition, err := query.ResolveInt(ctx, query.MinEditionKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MinEdition = minEdition
 	}
 
-	if maxEdition, err := resolveIntQuery(ctx, maxEditionQuery); err != nil {
+	if maxEdition, err := query.ResolveInt(ctx, query.MaxEditionKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MaxEdition = maxEdition
@@ -304,8 +305,8 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MinEdition != nil {
 		if *s.MinEdition <= 0 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, minEditionQuery),
-				Message:  fmt.Sprintf(errPositiveIntegerMsg, minEditionQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.MinEditionKey),
+				Message:  fmt.Sprintf(errPositiveIntegerMsg, query.MinEditionKey),
 				Value:    *s.MinEdition,
 			})
 		}
@@ -314,8 +315,8 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MaxEdition != nil {
 		if *s.MaxEdition <= 0 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, maxEditionQuery),
-				Message:  fmt.Sprintf(errPositiveIntegerMsg, maxEditionQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.MaxEditionKey),
+				Message:  fmt.Sprintf(errPositiveIntegerMsg, query.MaxEditionKey),
 				Value:    *s.MaxEdition,
 			})
 		}
@@ -323,20 +324,20 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MinEdition != nil && s.MaxEdition != nil {
 		if *s.MinEdition > *s.MaxEdition {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s, %s.%s", queryKey, minEditionQuery, queryKey, maxEditionQuery),
-				Message:  fmt.Sprintf(errMinMaxGreaterMsg, minEditionQuery, maxEditionQuery),
+				Location: fmt.Sprintf("%s.%s, %s.%s", query.Key, query.MinEditionKey, query.Key, query.MaxEditionKey),
+				Message:  fmt.Sprintf(errMinMaxGreaterMsg, query.MinEditionKey, query.MaxEditionKey),
 				Value:    *s.MinEdition,
 			})
 		}
 	}
 
-	if minCopies, err := resolveIntQuery(ctx, minCopiesQuery); err != nil {
+	if minCopies, err := query.ResolveInt(ctx, query.MinCopiesKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MinCopies = minCopies
 	}
 
-	if maxCopies, err := resolveIntQuery(ctx, maxCopiesQuery); err != nil {
+	if maxCopies, err := query.ResolveInt(ctx, query.MaxCopiesKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MaxCopies = maxCopies
@@ -345,8 +346,8 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MinCopies != nil {
 		if *s.MinCopies <= 0 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, minCopiesQuery),
-				Message:  fmt.Sprintf(errPositiveIntegerMsg, minCopiesQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.MinCopiesKey),
+				Message:  fmt.Sprintf(errPositiveIntegerMsg, query.MinCopiesKey),
 				Value:    *s.MinCopies,
 			})
 		}
@@ -355,8 +356,8 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MaxCopies != nil {
 		if *s.MaxCopies <= 0 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, maxCopiesQuery),
-				Message:  fmt.Sprintf(errPositiveIntegerMsg, maxCopiesQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.MaxCopiesKey),
+				Message:  fmt.Sprintf(errPositiveIntegerMsg, query.MaxCopiesKey),
 				Value:    *s.MaxCopies,
 			})
 		}
@@ -364,20 +365,20 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MinCopies != nil && s.MaxCopies != nil {
 		if *s.MinCopies > *s.MaxCopies {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s, %s.%s", queryKey, minCopiesQuery, queryKey, maxCopiesQuery),
-				Message:  fmt.Sprintf(errMinMaxGreaterMsg, minCopiesQuery, maxCopiesQuery),
+				Location: fmt.Sprintf("%s.%s, %s.%s", query.Key, query.MinCopiesKey, query.Key, query.MaxCopiesKey),
+				Message:  fmt.Sprintf(errMinMaxGreaterMsg, query.MinCopiesKey, query.MaxCopiesKey),
 				Value:    *s.MinCopies,
 			})
 		}
 	}
 
-	if minBorrowedCopies, err := resolveIntQuery(ctx, minBorrowedCopiesQuery); err != nil {
+	if minBorrowedCopies, err := query.ResolveInt(ctx, query.MinBorrowedCopiesKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MinBorrowedCopies = minBorrowedCopies
 	}
 
-	if maxBorrowedCopies, err := resolveIntQuery(ctx, maxBorrowedCopiesQuery); err != nil {
+	if maxBorrowedCopies, err := query.ResolveInt(ctx, query.MaxBorrowedCopiesKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MaxBorrowedCopies = maxBorrowedCopies
@@ -386,8 +387,8 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MinBorrowedCopies != nil {
 		if *s.MinBorrowedCopies < 0 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, minBorrowedCopiesQuery),
-				Message:  fmt.Sprintf(errPositiveIntegerOrZeroMsg, minBorrowedCopiesQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.MinBorrowedCopiesKey),
+				Message:  fmt.Sprintf(errPositiveIntegerOrZeroMsg, query.MinBorrowedCopiesKey),
 				Value:    *s.MinBorrowedCopies,
 			})
 		}
@@ -396,8 +397,8 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MaxBorrowedCopies != nil {
 		if *s.MaxBorrowedCopies <= 0 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, maxBorrowedCopiesQuery),
-				Message:  fmt.Sprintf(errPositiveIntegerMsg, maxBorrowedCopiesQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.MaxBorrowedCopiesKey),
+				Message:  fmt.Sprintf(errPositiveIntegerMsg, query.MaxBorrowedCopiesKey),
 				Value:    *s.MaxBorrowedCopies,
 			})
 		}
@@ -405,14 +406,14 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MinBorrowedCopies != nil && s.MaxBorrowedCopies != nil {
 		if *s.MinBorrowedCopies > *s.MaxBorrowedCopies {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s, %s.%s", queryKey, minBorrowedCopiesQuery, queryKey, maxBorrowedCopiesQuery),
-				Message:  fmt.Sprintf(errMinMaxGreaterMsg, minBorrowedCopiesQuery, maxBorrowedCopiesQuery),
+				Location: fmt.Sprintf("%s.%s, %s.%s", query.Key, query.MinBorrowedCopiesKey, query.Key, query.MaxBorrowedCopiesKey),
+				Message:  fmt.Sprintf(errMinMaxGreaterMsg, query.MinBorrowedCopiesKey, query.MaxBorrowedCopiesKey),
 				Value:    *s.MinBorrowedCopies,
 			})
 		}
 	}
 
-	if title, err := resolveStringQuery(ctx, titleQuery); err != nil {
+	if title, err := query.ResolveString(ctx, query.TitleKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.Title = title
@@ -421,14 +422,14 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.Title != nil {
 		if len(*s.Title) < 1 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, titleQuery),
-				Message:  fmt.Sprintf(errMinLengthMsg, titleQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.TitleKey),
+				Message:  fmt.Sprintf(errMinLengthMsg, query.TitleKey),
 				Value:    *s.Title,
 			})
 		}
 	}
 
-	if isbn, err := resolveStringQuery(ctx, isbnQuery); err != nil {
+	if isbn, err := query.ResolveString(ctx, query.ISBNKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.ISBN = isbn
@@ -437,14 +438,14 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.ISBN != nil {
 		if len(*s.ISBN) != 13 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, isbnQuery),
-				Message:  fmt.Sprintf(errExactLengthMsg, isbnQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.ISBNKey),
+				Message:  fmt.Sprintf(errExactLengthMsg, query.ISBNKey),
 				Value:    *s.ISBN,
 			})
 		}
 	}
 
-	if authors, err := resolveStringSliceQuery(ctx, authorsQuery); err != nil {
+	if authors, err := query.ResolveStringSlice(ctx, query.AuthorsKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.Authors = authors
@@ -453,14 +454,14 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.Authors != nil {
 		if len(s.Authors) < 1 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, authorsQuery),
-				Message:  fmt.Sprintf(errAtLeastOneItemMsg, authorsQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.AuthorsKey),
+				Message:  fmt.Sprintf(errAtLeastOneItemMsg, query.AuthorsKey),
 				Value:    s.Authors,
 			})
 		}
 	}
 
-	if publishers, err := resolveStringSliceQuery(ctx, publishersQuery); err != nil {
+	if publishers, err := query.ResolveStringSlice(ctx, query.PublishersKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.Publishers = publishers
@@ -469,14 +470,14 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.Publishers != nil {
 		if len(s.Publishers) < 1 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, publishersQuery),
-				Message:  fmt.Sprintf(errAtLeastOneItemMsg, publishersQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.PublishersKey),
+				Message:  fmt.Sprintf(errAtLeastOneItemMsg, query.PublishersKey),
 				Value:    s.Publishers,
 			})
 		}
 	}
 
-	if genres, err := resolveStringSliceQuery(ctx, publishersQuery); err != nil {
+	if genres, err := query.ResolveStringSlice(ctx, query.PublishersKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.Genres = genres
@@ -485,19 +486,19 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.Genres != nil {
 		if len(s.Genres) < 1 {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s", queryKey, genresQuery),
-				Message:  fmt.Sprintf(errAtLeastOneItemMsg, genresQuery),
+				Location: fmt.Sprintf("%s.%s", query.Key, query.GenresKey),
+				Message:  fmt.Sprintf(errAtLeastOneItemMsg, query.GenresKey),
 				Value:    s.Genres,
 			})
 		}
 	}
 
-	if minPublishedAt, err := resolveTimeQuery(ctx, minPublishedAtQuery); err != nil {
+	if minPublishedAt, err := query.ResolveTime(ctx, query.MinPublishedAtKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MinPublishedAt = minPublishedAt
 	}
-	if maxPublishedAt, err := resolveTimeQuery(ctx, maxPublishedAtQuery); err != nil {
+	if maxPublishedAt, err := query.ResolveTime(ctx, query.MaxPublishedAtKey); err != nil {
 		errs = append(errs, err)
 	} else {
 		s.MaxPublishedAt = maxPublishedAt
@@ -506,8 +507,8 @@ func (s *SearchBookInput) Resolve(ctx huma.Context) []error {
 	if s.MinPublishedAt != nil && s.MaxPublishedAt != nil {
 		if s.MinPublishedAt.After(*s.MaxPublishedAt) {
 			errs = append(errs, &huma.ErrorDetail{
-				Location: fmt.Sprintf("%s.%s %s.%s", queryKey, minPublishedAtQuery, queryKey, maxPublishedAtQuery),
-				Message:  fmt.Sprintf(errMinMaxLaterMsg, minPublishedAtQuery, maxPublishedAtQuery),
+				Location: fmt.Sprintf("%s.%s %s.%s", query.Key, query.MinPublishedAtKey, query.Key, query.MaxPublishedAtKey),
+				Message:  fmt.Sprintf(errMinMaxLaterMsg, query.MinPublishedAtKey, query.MaxPublishedAtKey),
 				Value:    s.MinPublishedAt.Format(time.RFC3339),
 			})
 		}
@@ -574,7 +575,7 @@ func (app *Application) searchBookHandler(ctx context.Context, input *SearchBook
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	books, metadata, err := app.models.Books.GetAll(ctx, filter, paginator, sorter)
+	books, metadata, err := app.Models.Books.GetAll(ctx, filter, paginator, sorter)
 	if err != nil {
 		return &SearchBooksOutput{}, err
 	}
@@ -611,7 +612,7 @@ func (app *Application) searchPatronsHandler(ctx context.Context, input *SearchP
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	patrons, metadata, err := app.models.Patrons.GetAll(ctx, filter, paginator, sorter)
+	patrons, metadata, err := app.Models.Patrons.GetAll(ctx, filter, paginator, sorter)
 	if err != nil {
 		return &SearchPatronsOutput{}, err
 	}
@@ -682,7 +683,7 @@ func (app *Application) searchTransactionsHandler(ctx context.Context, input *Se
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	transactions, metadata, err := app.models.Transactions.GetAll(ctx, filter, paginator, sorter)
+	transactions, metadata, err := app.Models.Transactions.GetAll(ctx, filter, paginator, sorter)
 	if err != nil {
 		return &SearchTransactionsOutput{}, err
 	}

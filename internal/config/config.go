@@ -20,5 +20,24 @@ type Input struct {
 		BooksCollection        string
 		PatronsCollection      string
 		TransactionsCollection string
+		TokensCollection       string
+		AdminsCollection       string
+	}
+	JTW struct {
+		Secret   string
+		Issuer   string
+		Audience string
+	}
+	Admin struct {
+		Username string
+		Password string
+		Create   bool
+	}
+	Demo struct {
+		Books   bool
+		Patrons bool
+	}
+	CORS struct {
+		TrustedOrigins []string
 	}
 }

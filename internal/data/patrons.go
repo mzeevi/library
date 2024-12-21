@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mzeevi/library/internal/auth"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -12,14 +13,25 @@ import (
 	"time"
 )
 
+var (
+	ErrDuplicateEmail = errors.New("duplicate email")
+)
+
+var (
+	AnonymousPatron = &Patron{}
+)
+
 type Patron struct {
-	ID        string    `bson:"_id,omitempty" json:"id,omitempty"`
-	Name      string    `bson:"name" json:"name"`
-	Email     string    `bson:"email" json:"email"`
-	Category  string    `bson:"category" json:"category"`
-	Version   int32     `bson:"version" json:"-"`
-	CreatedAt time.Time `bson:"created_at" json:"-"`
-	UpdatedAt time.Time `bson:"updated_at" json:"-"`
+	ID          string        `bson:"_id,omitempty" json:"id,omitempty"`
+	Name        string        `bson:"name" json:"name"`
+	Email       string        `bson:"email" json:"email"`
+	Category    string        `bson:"category" json:"category"`
+	Password    auth.Password `bson:"password" json:"-"`
+	Activated   bool          `bson:"activated" json:"activated"`
+	Permissions []string      `bson:"permissions" json:"-"`
+	Version     int32         `bson:"version" json:"-"`
+	CreatedAt   time.Time     `bson:"created_at" json:"-"`
+	UpdatedAt   time.Time     `bson:"updated_at" json:"-"`
 }
 
 type PatronFilter struct {
@@ -52,6 +64,11 @@ func NewPatron(id string, name, email, category string) *Patron {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+}
+
+// IsAnonymous checks if a Patron instance is anonymous.
+func (p *Patron) IsAnonymous() bool {
+	return p == AnonymousPatron
 }
 
 // buildPatronFilter constructs a filter query for filtering patrons.
@@ -107,6 +124,9 @@ func buildPatronUpdater(patron *Patron) bson.D {
 		{Key: nameTag, Value: patron.Name},
 		{Key: emailTag, Value: patron.Email},
 		{Key: categoryTag, Value: patron.Category},
+		{Key: passwordTag, Value: patron.Password},
+		{Key: activatedTag, Value: patron.Activated},
+		{Key: permissionsTag, Value: patron.Permissions},
 	}
 
 	updateFields = append(updateFields, bson.E{Key: updatedAtTag, Value: time.Now()})
@@ -141,14 +161,13 @@ func (p PatronModel) Insert(ctx context.Context, patron *Patron) (string, error)
 
 	patron.CreatedAt = time.Now()
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
 	res, err := coll.InsertOne(ctx, patron)
 	if err != nil {
 		switch {
-		case strings.Contains(err.Error(), "E11000 duplicate key error collection"):
+		case strings.Contains(err.Error(), "_id_ dup key:"):
 			return "", ErrDuplicateID
+		case strings.Contains(err.Error(), "email_-1 dup key"):
+			return "", ErrDuplicateEmail
 		default:
 			return "", err
 		}
@@ -171,9 +190,6 @@ func (p PatronModel) Get(ctx context.Context, filter PatronFilter) (*Patron, err
 	}
 
 	patron := &Patron{}
-
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	err = coll.FindOne(ctx, filterQuery).Decode(patron)
 	if err != nil {
@@ -251,9 +267,6 @@ func (p PatronModel) Update(ctx context.Context, filter PatronFilter, patron *Pa
 		return fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
 	result, err := coll.UpdateOne(ctx, filterQuery, update)
 	if err != nil {
 		return err
@@ -266,7 +279,7 @@ func (p PatronModel) Update(ctx context.Context, filter PatronFilter, patron *Pa
 	return nil
 }
 
-// Delete deletes a Patron from the database by ID.
+// Delete deletes a Patron from the database by filter.
 func (p PatronModel) Delete(ctx context.Context, filter PatronFilter) error {
 	coll := p.Client.Database(p.Database).Collection(p.Collection)
 
@@ -274,9 +287,6 @@ func (p PatronModel) Delete(ctx context.Context, filter PatronFilter) error {
 	if err != nil {
 		return fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	result, err := coll.DeleteOne(ctx, filterQuery)
 	if err != nil {

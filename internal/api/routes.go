@@ -5,25 +5,34 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/go-chi/httplog/v2"
+	"github.com/mzeevi/library/internal/auth"
+	"github.com/mzeevi/library/internal/query"
 	"net/http"
 	"reflect"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2/adapters/humachi"
 	_ "github.com/danielgtaylor/huma/v2/formats/cbor"
+	"github.com/go-chi/httprate"
 )
 
 const (
-	basePath        = ""
-	booksKey        = "books"
-	patronsKey      = "patrons"
-	transactionsKey = "transactions"
-	borrowKey       = "borrow"
-	returnKey       = "return"
-	searchKey       = "search"
-	healthcheckKey  = "healthcheck"
-	idKey           = "id"
+	bearerSecKey      = "bearer"
+	basicAuthKey      = "basic"
+	basePath          = ""
+	booksKey          = "books"
+	patronsKey        = "patrons"
+	transactionsKey   = "transactions"
+	tokensKey         = "token"
+	authenticationKey = "authentication"
+	borrowKey         = "borrow"
+	returnKey         = "return"
+	searchKey         = "search"
+	healthcheckKey    = "healthcheck"
+	idKey             = "id"
+	activated         = "activated"
 )
 
 var (
@@ -36,11 +45,32 @@ var (
 func (app *Application) routes() http.Handler {
 	router := chi.NewMux()
 	conf := huma.DefaultConfig("My API", "1.0.0")
+	conf.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
+		bearerSecKey: {
+			Type:         "http",
+			Scheme:       "bearer",
+			BearerFormat: "jwt",
+		},
+		basicAuthKey: {
+			Type:         "http",
+			Scheme:       "basic",
+			BearerFormat: "Basic Auth",
+		},
+	}
 
 	router.Use(middleware.RealIP)
 	router.Use(middleware.RequestID)
 	router.Use(httplog.RequestLogger(app.logger))
 	router.Use(middleware.Recoverer)
+	router.Use(httprate.Limit(100, 10*time.Second, httprate.WithKeyFuncs(httprate.KeyByIP, httprate.KeyByEndpoint)))
+	router.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   app.Config.CORS.TrustedOrigins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
 
 	api := humachi.New(router, conf)
 
@@ -49,6 +79,7 @@ func (app *Application) routes() http.Handler {
 	app.registerPatrons(api)
 	app.registerTransactions(api)
 	app.registerSearch(api)
+	app.registerToken(api)
 
 	return router
 }
@@ -74,6 +105,10 @@ func (app *Application) registerBooks(api huma.API) {
 		Summary:     "Get a Book",
 		Description: "Get a Book from a specific ID",
 		Tags:        []string{booksKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.ReadBooksPermission)},
+		Security: []map[string][]string{
+			{bearerSecKey: {}},
+		},
 	}, app.getBookHandler)
 
 	huma.Register(api, huma.Operation{
@@ -83,6 +118,11 @@ func (app *Application) registerBooks(api huma.API) {
 		Summary:     "Get Books",
 		Description: "Get all Books",
 		Tags:        []string{booksKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.ReadBooksPermission)},
+		Security: []map[string][]string{
+			{bearerSecKey: {}},
+			{basicAuthKey: {}},
+		},
 	}, app.getBooksHandler)
 
 	huma.Register(api, huma.Operation{
@@ -92,6 +132,10 @@ func (app *Application) registerBooks(api huma.API) {
 		Summary:     "Create a Book",
 		Description: "Create a specific Book",
 		Tags:        []string{booksKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.WriteBooksPermission)},
+		Security: []map[string][]string{
+			{basicAuthKey: {}},
+		},
 	}, app.createBookHandler)
 
 	huma.Register(api, huma.Operation{
@@ -101,6 +145,10 @@ func (app *Application) registerBooks(api huma.API) {
 		Summary:     "Update a Book",
 		Description: "Update a specific Book",
 		Tags:        []string{booksKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.WriteBooksPermission)},
+		Security: []map[string][]string{
+			{basicAuthKey: {}},
+		},
 	}, app.updateBookHandler)
 
 	huma.Register(api, huma.Operation{
@@ -110,6 +158,10 @@ func (app *Application) registerBooks(api huma.API) {
 		Summary:     "Delete a Book",
 		Description: "Delete a specific Book",
 		Tags:        []string{booksKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.WriteBooksPermission)},
+		Security: []map[string][]string{
+			{basicAuthKey: {}},
+		},
 	}, app.deleteBookHandler)
 }
 
@@ -122,6 +174,11 @@ func (app *Application) registerPatrons(api huma.API) {
 		Summary:     "Get a Patron",
 		Description: "Get a Patron from a specific ID",
 		Tags:        []string{patronsKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.ReadPatronPermission), app.requireMatchingID(api)},
+		Security: []map[string][]string{
+			{bearerSecKey: {}},
+			{basicAuthKey: {}},
+		},
 	}, app.getPatronHandler)
 
 	huma.Register(api, huma.Operation{
@@ -131,6 +188,10 @@ func (app *Application) registerPatrons(api huma.API) {
 		Summary:     "Get Patrons",
 		Description: "Get all Patrons",
 		Tags:        []string{patronsKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.ReadPatronsPermission)},
+		Security: []map[string][]string{
+			{basicAuthKey: {}},
+		},
 	}, app.getPatronsHandler)
 
 	huma.Register(api, huma.Operation{
@@ -140,6 +201,10 @@ func (app *Application) registerPatrons(api huma.API) {
 		Summary:     "Create a Patron",
 		Description: "Create a specific Patron",
 		Tags:        []string{patronsKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.WritePatronsPermission)},
+		Security: []map[string][]string{
+			{basicAuthKey: {}},
+		},
 	}, app.createPatronHandler)
 
 	huma.Register(api, huma.Operation{
@@ -149,6 +214,11 @@ func (app *Application) registerPatrons(api huma.API) {
 		Summary:     "Update a Patron",
 		Description: "Update a specific Patron",
 		Tags:        []string{patronsKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.WritePatronPermission)},
+		Security: []map[string][]string{
+			{bearerSecKey: {}},
+			{basicAuthKey: {}},
+		},
 	}, app.updatePatronHandler)
 
 	huma.Register(api, huma.Operation{
@@ -158,7 +228,21 @@ func (app *Application) registerPatrons(api huma.API) {
 		Summary:     "Delete a Patron",
 		Description: "Delete a specific Patron",
 		Tags:        []string{patronsKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.WritePatronPermission)},
+		Security: []map[string][]string{
+			{basicAuthKey: {}},
+			{bearerSecKey: {}},
+		},
 	}, app.deletePatronHandler)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "activate-patron",
+		Method:      http.MethodPut,
+		Path:        fmt.Sprintf("%s/%s/%s", basePath, patronsKey, activated),
+		Summary:     "Activate a Patron",
+		Description: "Activate a specific Patron",
+		Tags:        []string{patronsKey},
+	}, app.activatePatronHandler)
 }
 
 // registerTransactions registers transaction endpoints.
@@ -170,6 +254,10 @@ func (app *Application) registerTransactions(api huma.API) {
 		Summary:     "Get a Transaction",
 		Description: "Get a Transaction from a specific ID",
 		Tags:        []string{transactionsKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.ReadTransactionsPermission)},
+		Security: []map[string][]string{
+			{basicAuthKey: {}},
+		},
 	}, app.getTransactionHandler)
 
 	huma.Register(api, huma.Operation{
@@ -179,6 +267,10 @@ func (app *Application) registerTransactions(api huma.API) {
 		Summary:     "Get Transactions",
 		Description: "Get all Transactions",
 		Tags:        []string{transactionsKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.ReadTransactionsPermission)},
+		Security: []map[string][]string{
+			{basicAuthKey: {}},
+		},
 	}, app.getTransactionsHandler)
 
 	huma.Register(api, huma.Operation{
@@ -188,6 +280,11 @@ func (app *Application) registerTransactions(api huma.API) {
 		Summary:     "Borrow Book",
 		Description: "Borrow a Book",
 		Tags:        []string{transactionsKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.BorrowBookPermission)},
+		Security: []map[string][]string{
+			{bearerSecKey: {}},
+			{basicAuthKey: {}},
+		},
 	}, app.borrowBookTransactionHandler)
 
 	huma.Register(api, huma.Operation{
@@ -197,6 +294,11 @@ func (app *Application) registerTransactions(api huma.API) {
 		Summary:     "Return Book",
 		Description: "Return a Book",
 		Tags:        []string{transactionsKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.ReturnBookPermission)},
+		Security: []map[string][]string{
+			{bearerSecKey: {}},
+			{basicAuthKey: {}},
+		},
 	}, app.returnBookTransactionHandler)
 
 	huma.Register(api, huma.Operation{
@@ -205,7 +307,11 @@ func (app *Application) registerTransactions(api huma.API) {
 		Path:        fmt.Sprintf("%s/%s/{%s}", basePath, transactionsKey, idKey),
 		Summary:     "Update a Transaction",
 		Description: "Update a specific Transaction",
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.WriteTransactionsPermission)},
 		Tags:        []string{transactionsKey},
+		Security: []map[string][]string{
+			{basicAuthKey: {}},
+		},
 	}, app.updateTransactionHandler)
 
 	huma.Register(api, huma.Operation{
@@ -215,6 +321,10 @@ func (app *Application) registerTransactions(api huma.API) {
 		Summary:     "Delete a Transaction",
 		Description: "Delete a specific Transaction",
 		Tags:        []string{transactionsKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.WriteTransactionsPermission)},
+		Security: []map[string][]string{
+			{basicAuthKey: {}},
+		},
 	}, app.deleteTransactionHandler)
 }
 
@@ -226,80 +336,85 @@ func (app *Application) registerSearch(api huma.API) {
 		Summary:     "Search Books",
 		Description: "Search books based on specific parameters",
 		Tags:        []string{searchKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.ReadBooksPermission)},
+		Security: []map[string][]string{
+			{bearerSecKey: {}},
+			{basicAuthKey: {}},
+		},
 		Parameters: []*huma.Param{
 			{
-				Name:   minPagesQuery,
-				In:     queryKey,
+				Name:   query.MinPagesKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeInt),
 			},
 			{
-				Name:   maxPagesQuery,
-				In:     queryKey,
+				Name:   query.MaxPagesKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeInt),
 			},
 			{
-				Name:   minEditionQuery,
-				In:     queryKey,
+				Name:   query.MinEditionKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeInt),
 			},
 			{
-				Name:   maxEditionQuery,
-				In:     queryKey,
+				Name:   query.MaxEditionKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeInt),
 			},
 			{
-				Name:   minPublishedAtQuery,
-				In:     queryKey,
+				Name:   query.MinPublishedAtKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeTime),
 			},
 			{
-				Name:   maxPublishedAtQuery,
-				In:     queryKey,
+				Name:   query.MaxPublishedAtKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeTime),
 			},
 			{
-				Name:   titleQuery,
-				In:     queryKey,
+				Name:   query.TitleKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeString),
 			},
 			{
-				Name:   isbnQuery,
-				In:     queryKey,
+				Name:   query.ISBNKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeString),
 			},
 			{
-				Name:   authorsQuery,
-				In:     queryKey,
+				Name:   query.AuthorsKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, reflect.SliceOf(typeString)),
 			},
 			{
-				Name:   publishersQuery,
-				In:     queryKey,
+				Name:   query.PublishersKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, reflect.SliceOf(typeString)),
 			},
 			{
-				Name:   genresQuery,
-				In:     queryKey,
+				Name:   query.GenresKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, reflect.SliceOf(typeString)),
 			},
 			{
-				Name:   minCopiesQuery,
-				In:     queryKey,
+				Name:   query.MinCopiesKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeInt),
 			},
 			{
-				Name:   maxCopiesQuery,
-				In:     queryKey,
+				Name:   query.MaxCopiesKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeInt),
 			},
 			{
-				Name:   minBorrowedCopiesQuery,
-				In:     queryKey,
+				Name:   query.MinBorrowedCopiesKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeInt),
 			},
 			{
-				Name:   maxBorrowedCopiesQuery,
-				In:     queryKey,
+				Name:   query.MaxBorrowedCopiesKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeInt),
 			},
 		},
@@ -312,20 +427,24 @@ func (app *Application) registerSearch(api huma.API) {
 		Summary:     "Search Patrons",
 		Description: "Search patrons based on specific parameters",
 		Tags:        []string{searchKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.ReadPatronsPermission)},
+		Security: []map[string][]string{
+			{basicAuthKey: {}},
+		},
 		Parameters: []*huma.Param{
 			{
-				Name:   nameQuery,
-				In:     queryKey,
+				Name:   query.NameKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeString),
 			},
 			{
-				Name:   emailQuery,
-				In:     queryKey,
+				Name:   query.EmailKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeString),
 			},
 			{
-				Name:   categoryQuery,
-				In:     queryKey,
+				Name:   query.CategoryKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeString),
 			},
 		},
@@ -338,62 +457,77 @@ func (app *Application) registerSearch(api huma.API) {
 		Summary:     "Search Transactions",
 		Description: "Search transactions based on specific parameters",
 		Tags:        []string{searchKey},
+		Middlewares: huma.Middlewares{app.authenticate(api), app.requirePermission(api, auth.ReadTransactionsPermission)},
+		Security: []map[string][]string{
+			{basicAuthKey: {}},
+		},
 		Parameters: []*huma.Param{
 			{
-				Name:   patronIDQuery,
-				In:     queryKey,
+				Name:   query.PatronIDKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeString),
 			},
 			{
-				Name:   bookIDQuery,
-				In:     queryKey,
+				Name:   query.BookIDKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeString),
 			},
 			{
-				Name:   statusQuery,
-				In:     queryKey,
+				Name:   query.StatusKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeString),
 			},
 			{
-				Name:   minBorrowedAtQuery,
-				In:     queryKey,
+				Name:   query.MinBorrowedAtKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeTime),
 			},
 			{
-				Name:   maxBorrowedAtQuery,
-				In:     queryKey,
+				Name:   query.MaxBorrowedAtKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeTime),
 			},
 			{
-				Name:   minDueDateQuery,
-				In:     queryKey,
+				Name:   query.MinDueDateKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeTime),
 			},
 			{
-				Name:   maxDueDateQuery,
-				In:     queryKey,
+				Name:   query.MaxDueDateKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeTime),
 			},
 			{
-				Name:   minReturnedAtQuery,
-				In:     queryKey,
+				Name:   query.MinReturnedAtKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeTime),
 			},
 			{
-				Name:   maxReturnedAtQuery,
-				In:     queryKey,
+				Name:   query.MaxReturnedAtKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeTime),
 			},
 			{
-				Name:   minCreatedAtQuery,
-				In:     queryKey,
+				Name:   query.MinCreatedAtKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeTime),
 			},
 			{
-				Name:   maxCreatedAtQuery,
-				In:     queryKey,
+				Name:   query.MaxCreatedAtKey,
+				In:     query.Key,
 				Schema: huma.SchemaFromType(api.OpenAPI().Components.Schemas, typeTime),
 			},
 		},
 	}, app.searchTransactionsHandler)
+}
+
+func (app *Application) registerToken(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "create-auth-token",
+		Method:      http.MethodPost,
+		Path:        fmt.Sprintf("%s/%s/%s", basePath, tokensKey, authenticationKey),
+		Summary:     "Create an auth token",
+		Description: "Create a specific auth token",
+		Tags:        []string{tokensKey},
+	}, app.createAuthTokenHandler)
 }

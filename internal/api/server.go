@@ -40,6 +40,7 @@ func (app *Application) Serve() error {
 		}
 
 		app.logger.Info("completing background tasks", "addr", srv.Addr)
+
 		shutdownError <- nil
 	}()
 

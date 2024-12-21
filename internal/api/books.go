@@ -78,21 +78,36 @@ type DeleteBookOutput struct {
 }
 
 func (b *GetBookInput) Resolve(ctx huma.Context) []error {
-	return []error{
-		validateID(&b.ID, "path.id"),
+	var errs []error
+
+	err := validateID(&b.ID, "path.id")
+	if err != nil {
+		errs = append(errs, err)
 	}
+
+	return errs
 }
 
 func (b *UpdateBookInput) Resolve(ctx huma.Context) []error {
-	return []error{
-		validateID(&b.ID, "path.id"),
+	var errs []error
+
+	err := validateID(&b.ID, "path.id")
+	if err != nil {
+		errs = append(errs, err)
 	}
+
+	return errs
 }
 
 func (b *DeleteBookInput) Resolve(ctx huma.Context) []error {
-	return []error{
-		validateID(&b.ID, "path.id"),
+	var errs []error
+
+	err := validateID(&b.ID, "path.id")
+	if err != nil {
+		errs = append(errs, err)
 	}
+
+	return errs
 }
 
 // getBookHandler retrieves a book by its ID.
@@ -100,7 +115,7 @@ func (app *Application) getBookHandler(ctx context.Context, input *GetBookInput)
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	book, err := app.models.Books.Get(ctx, data.BookFilter{ID: &input.ID})
+	book, err := app.Models.Books.Get(ctx, data.BookFilter{ID: &input.ID})
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrDocumentNotFound):
@@ -125,7 +140,7 @@ func (app *Application) getBooksHandler(ctx context.Context, input *GetBooksInpu
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	books, metadata, err := app.models.Books.GetAll(ctx, filter, paginator, sorter)
+	books, metadata, err := app.Models.Books.GetAll(ctx, filter, paginator, sorter)
 	if err != nil {
 		return &GetBooksOutput{}, err
 	}
@@ -157,7 +172,8 @@ func (app *Application) createBookHandler(ctx context.Context, input *CreateBook
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	id, err := app.models.Books.Insert(ctx, book)
+	id, err := app.Models.Books.Insert(ctx, book)
+
 	if err != nil {
 		return &CreateBookOutput{}, err
 	}
@@ -175,7 +191,7 @@ func (app *Application) updateBookHandler(ctx context.Context, input *UpdateBook
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	book, err := app.models.Books.Get(ctx, data.BookFilter{ID: &input.ID})
+	book, err := app.Models.Books.Get(ctx, data.BookFilter{ID: &input.ID})
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrDocumentNotFound):
@@ -221,7 +237,7 @@ func (app *Application) updateBookHandler(ctx context.Context, input *UpdateBook
 		book.Authors = input.Body.Authors
 	}
 
-	err = app.models.Books.Update(ctx, data.BookFilter{ID: &input.ID}, book)
+	err = app.Models.Books.Update(ctx, data.BookFilter{ID: &input.ID}, book)
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrEditConflict):
@@ -243,7 +259,7 @@ func (app *Application) deleteBookHandler(ctx context.Context, input *DeleteBook
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	err := app.models.Books.Delete(ctx, data.BookFilter{ID: &input.ID})
+	err := app.Models.Books.Delete(ctx, data.BookFilter{ID: &input.ID})
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrDocumentNotFound):
