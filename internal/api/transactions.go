@@ -80,33 +80,65 @@ type DeleteTransactionOutput struct {
 
 // Resolve validates the input in ReturnBookTransactionInput.
 func (t *ReturnBookTransactionInput) Resolve(ctx huma.Context) []error {
-	return []error{
-		validateID(&t.Body.BookID, "body.bookID"),
-		validateID(&t.Body.PatronID, "body.PatronID"),
+	var errs []error
+
+	err := validateID(&t.Body.BookID, "body.bookID")
+	if err != nil {
+		errs = append(errs, err)
 	}
+
+	err = validateID(&t.Body.PatronID, "body.PatronID")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	return errs
 }
 
 // Resolve validates the input in BorrowBookTransactionInput.
 func (t *BorrowBookTransactionInput) Resolve(ctx huma.Context) []error {
-	return []error{
-		validateID(&t.Body.BookID, "body.bookID"),
-		validateID(&t.Body.PatronID, "body.PatronID"),
-		validateDueDate(&t.Body.DueDate, "body.dueDate"),
+	var errs []error
+
+	err := validateID(&t.Body.BookID, "body.bookID")
+	if err != nil {
+		errs = append(errs, err)
 	}
+
+	err = validateID(&t.Body.PatronID, "body.PatronID")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	err = validateDueDate(&t.Body.DueDate, "body.dueDate")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	return errs
 }
 
 // Resolve validates the input in UpdateTransactionInput.
 func (t *UpdateTransactionInput) Resolve(ctx huma.Context) []error {
-	return []error{
-		validateDueDate(t.Body.DueDate, "body.dueDate"),
+	var errs []error
+
+	err := validateDueDate(t.Body.DueDate, "body.dueDate")
+	if err != nil {
+		errs = append(errs, err)
 	}
+
+	return errs
 }
 
 // Resolve validates the input in DeleteTransactionInput.
 func (t *DeleteTransactionInput) Resolve(ctx huma.Context) []error {
-	return []error{
-		validateID(&t.ID, "path.ID"),
+	var errs []error
+
+	err := validateID(&t.ID, "path.ID")
+	if err != nil {
+		errs = append(errs, err)
 	}
+
+	return errs
 }
 
 // getTransactionHandler handles a request to fetch a single transaction by ID.
@@ -114,7 +146,7 @@ func (app *Application) getTransactionHandler(ctx context.Context, input *GetTra
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	transaction, err := app.models.Transactions.Get(ctx, data.TransactionFilter{ID: &input.ID})
+	transaction, err := app.Models.Transactions.Get(ctx, data.TransactionFilter{ID: &input.ID})
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrDocumentNotFound):
@@ -140,7 +172,7 @@ func (app *Application) getTransactionsHandler(ctx context.Context, input *GetTr
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	transactions, metadata, err := app.models.Transactions.GetAll(ctx, filter, paginator, sorter)
+	transactions, metadata, err := app.Models.Transactions.GetAll(ctx, filter, paginator, sorter)
 	if err != nil {
 		return &GetTransactionsOutput{}, err
 	}
@@ -156,7 +188,7 @@ func (app *Application) getTransactionsHandler(ctx context.Context, input *GetTr
 }
 
 func (app *Application) borrowBookTransactionHandler(ctx context.Context, input *BorrowBookTransactionInput) (*BorrowBookTransactionOutput, error) {
-	dbClient := app.models.Transactions.Client
+	dbClient := app.Models.Transactions.Client
 
 	session, err := dbClient.StartSession()
 	if err != nil {
@@ -169,7 +201,7 @@ func (app *Application) borrowBookTransactionHandler(ctx context.Context, input 
 		return &BorrowBookTransactionOutput{}, err
 	}
 
-	book, err := app.models.Books.Get(sessionContext, data.BookFilter{ID: &input.Body.BookID})
+	book, err := app.Models.Books.Get(sessionContext, data.BookFilter{ID: &input.Body.BookID})
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrDocumentNotFound):
@@ -179,7 +211,7 @@ func (app *Application) borrowBookTransactionHandler(ctx context.Context, input 
 		}
 	}
 
-	patron, err := app.models.Patrons.Get(sessionContext, data.PatronFilter{ID: &input.Body.PatronID})
+	patron, err := app.Models.Patrons.Get(sessionContext, data.PatronFilter{ID: &input.Body.PatronID})
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrDocumentNotFound):
@@ -201,13 +233,13 @@ func (app *Application) borrowBookTransactionHandler(ctx context.Context, input 
 		BorrowedAt: time.Now(),
 	}
 
-	id, err := app.models.Transactions.Insert(sessionContext, transaction)
+	id, err := app.Models.Transactions.Insert(sessionContext, transaction)
 	if err != nil {
 		return &BorrowBookTransactionOutput{}, err
 	}
 
 	book.BorrowedCopies = book.BorrowedCopies + input.Body.Copies
-	err = app.models.Books.Update(sessionContext, data.BookFilter{ID: &book.ID}, book)
+	err = app.Models.Books.Update(sessionContext, data.BookFilter{ID: &book.ID}, book)
 	if err != nil {
 		return &BorrowBookTransactionOutput{}, err
 	}
@@ -225,7 +257,7 @@ func (app *Application) borrowBookTransactionHandler(ctx context.Context, input 
 }
 
 func (app *Application) returnBookTransactionHandler(ctx context.Context, input *ReturnBookTransactionInput) (*ReturnBookTransactionOutput, error) {
-	dbClient := app.models.Transactions.Client
+	dbClient := app.Models.Transactions.Client
 
 	session, err := dbClient.StartSession()
 	if err != nil {
@@ -238,7 +270,7 @@ func (app *Application) returnBookTransactionHandler(ctx context.Context, input 
 		return &ReturnBookTransactionOutput{}, err
 	}
 
-	book, err := app.models.Books.Get(sessionContext, data.BookFilter{ID: &input.Body.BookID})
+	book, err := app.Models.Books.Get(sessionContext, data.BookFilter{ID: &input.Body.BookID})
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrDocumentNotFound):
@@ -248,7 +280,7 @@ func (app *Application) returnBookTransactionHandler(ctx context.Context, input 
 		}
 	}
 
-	patron, err := app.models.Patrons.Get(sessionContext, data.PatronFilter{ID: &input.Body.PatronID})
+	patron, err := app.Models.Patrons.Get(sessionContext, data.PatronFilter{ID: &input.Body.PatronID})
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrDocumentNotFound):
@@ -258,7 +290,7 @@ func (app *Application) returnBookTransactionHandler(ctx context.Context, input 
 		}
 	}
 
-	transaction, err := app.models.Transactions.Get(sessionContext, data.TransactionFilter{
+	transaction, err := app.Models.Transactions.Get(sessionContext, data.TransactionFilter{
 		Status:   ptr(data.TransactionStatusBorrowed),
 		BookID:   &book.ID,
 		PatronID: &patron.ID,
@@ -275,12 +307,12 @@ func (app *Application) returnBookTransactionHandler(ctx context.Context, input 
 	transaction.ReturnedAt = time.Now()
 	transaction.Status = data.TransactionStatusReturned
 
-	if err = app.models.Transactions.Update(sessionContext, data.TransactionFilter{ID: &transaction.ID}, transaction); err != nil {
+	if err = app.Models.Transactions.Update(sessionContext, data.TransactionFilter{ID: &transaction.ID}, transaction); err != nil {
 		return &ReturnBookTransactionOutput{}, err
 	}
 
 	book.BorrowedCopies = book.BorrowedCopies - input.Body.Copies
-	err = app.models.Books.Update(sessionContext, data.BookFilter{ID: &book.ID}, book)
+	err = app.Models.Books.Update(sessionContext, data.BookFilter{ID: &book.ID}, book)
 	if err != nil {
 		return &ReturnBookTransactionOutput{}, err
 	}
@@ -308,7 +340,7 @@ func (app *Application) updateTransactionHandler(ctx context.Context, input *Upd
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	transaction, err := app.models.Transactions.Get(ctx, data.TransactionFilter{ID: &input.ID})
+	transaction, err := app.Models.Transactions.Get(ctx, data.TransactionFilter{ID: &input.ID})
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrDocumentNotFound):
@@ -338,7 +370,7 @@ func (app *Application) deleteTransactionHandler(ctx context.Context, input *Del
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
-	err := app.models.Transactions.Delete(ctx, data.TransactionFilter{ID: &input.ID})
+	err := app.Models.Transactions.Delete(ctx, data.TransactionFilter{ID: &input.ID})
 	if err != nil {
 		switch {
 		case errors.Is(err, data.ErrDocumentNotFound):

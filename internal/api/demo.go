@@ -14,8 +14,8 @@ import (
 func (app *Application) InsertBooks(n int) ([]string, error) {
 	var ids []string
 
-	client := app.models.Books.Client
-	coll := client.Database(app.models.Books.Database).Collection(app.models.Books.Collection)
+	client := app.Models.Books.Client
+	coll := client.Database(app.Models.Books.Database).Collection(app.Models.Books.Collection)
 
 	books := mockBooks(n)
 
@@ -35,8 +35,8 @@ func (app *Application) InsertBooks(n int) ([]string, error) {
 func (app *Application) InsertPatrons(n int) ([]string, error) {
 	var ids []string
 
-	client := app.models.Patrons.Client
-	coll := client.Database(app.models.Patrons.Database).Collection(app.models.Patrons.Collection)
+	client := app.Models.Patrons.Client
+	coll := client.Database(app.Models.Patrons.Database).Collection(app.Models.Patrons.Collection)
 
 	patrons, err := mockPatrons(n)
 	if err != nil {

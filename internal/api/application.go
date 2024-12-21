@@ -10,7 +10,7 @@ import (
 
 type Application struct {
 	Config config.Input
-	models data.Models
+	Models data.Models
 	cost   struct {
 		overdueFine float64
 		discounts   map[string]float64
@@ -34,7 +34,7 @@ func (app *Application) Setup(dbClient *mongo.Client, logger *httplog.Logger) er
 		return fmt.Errorf("failed to setup discounts: %v", err)
 	}
 
-	if err := app.setupModels(dbClient, cfg.DB.Database, cfg.DB.BooksCollection, cfg.DB.PatronsCollection, cfg.DB.TransactionsCollection); err != nil {
+	if err := app.setupModels(dbClient, cfg.DB.Database, cfg.DB.BooksCollection, cfg.DB.PatronsCollection, cfg.DB.TransactionsCollection, cfg.DB.TokensCollection, cfg.DB.AdminsCollection); err != nil {
 		return fmt.Errorf("failed to setup models: %v", err)
 	}
 
@@ -83,18 +83,20 @@ func (app *Application) setupOutput(format string) error {
 }
 
 // setupModels populates the model fields inside the app struct.
-func (app *Application) setupModels(dbClient *mongo.Client, dbName, booksCollection, patronsCollection, transactionCollection string) error {
-	app.models = data.NewModels(dbClient, dbName, map[string]string{
+func (app *Application) setupModels(dbClient *mongo.Client, dbName, booksCollection, patronsCollection, transactionCollection, tokenCollection, adminCollection string) error {
+	app.Models = data.NewModels(dbClient, dbName, map[string]string{
 		data.BooksCollectionKey:        booksCollection,
 		data.PatronsCollectionKey:      patronsCollection,
 		data.TransactionsCollectionKey: transactionCollection,
+		data.TokensCollectionKey:       tokenCollection,
+		data.AdminsCollectionKey:       adminCollection,
 	})
 
-	if err := app.models.Books.CreateUniqueIndex(); err != nil {
+	if err := app.Models.Books.CreateUniqueIndex(); err != nil {
 		return fmt.Errorf("failed to create unique index: %v", err)
 	}
 
-	if err := app.models.Patrons.CreateUniqueIndex(); err != nil {
+	if err := app.Models.Patrons.CreateUniqueIndex(); err != nil {
 		return fmt.Errorf("failed to create unique index: %v", err)
 	}
 

@@ -41,17 +41,17 @@ docker-push:
 ## run/api: run the cmd/api application
 .PHONY: run/api
 run/api:
-	go run ./cmd/ --db-dsn=$(DB_DSN)
+	go run ./cmd/ --db-dsn=${DB_DSN} -jwt-secret=${JWT_SECRET} -admin-username=${ADMIN_USER} -admin-password=${ADMIN_PASSWORD}
 
 ## setup-local-mongo: creates a local mongodb
 .PHONY: setup-local-mongo
 setup-local-mongo:
-	$(CONTAINER_TOOL) compose up -d
+	@$(CONTAINER_TOOL) compose up -d
 
 ## teardown-local-mongo: creates a local mongodb
 .PHONY: teardown-local-mongo
 teardown-local-mongo:
-	$(CONTAINER_TOOL) compose down
+	@$(CONTAINER_TOOL) compose down
 
 # ==================================================================================== #
 # QUALITY CONTROL

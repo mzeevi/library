@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+var (
+	ErrDuplicateISBN = errors.New("duplicate isbn")
+)
+
 type Book struct {
 	ID             string    `bson:"_id,omitempty" json:"id,omitempty"`
 	Pages          int       `bson:"pages" json:"pages"`
@@ -76,19 +80,6 @@ func NewBook(id string, title, isbn string, pages, edition, copies int, authors,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-}
-
-func buildSorter(sorter Sorter) (bson.D, error) {
-	query := bson.D{}
-
-	field, err := sorter.field()
-	if err != nil {
-		return query, err
-	} else if field == "" {
-		return query, nil
-	}
-
-	return bson.D{{Key: field, Value: sorter.sortDirection()}}, nil
 }
 
 // buildBookFilter constructs a filter query for filtering books.
@@ -242,14 +233,13 @@ func (b BookModel) Insert(ctx context.Context, book *Book) (string, error) {
 	book.CreatedAt = time.Now()
 	book.UpdatedAt = time.Now()
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
 	res, err := coll.InsertOne(ctx, book)
 	if err != nil {
 		switch {
-		case strings.Contains(err.Error(), "E11000 duplicate key error collection"):
+		case strings.Contains(err.Error(), "_id_ dup key:"):
 			return "", ErrDuplicateID
+		case strings.Contains(err.Error(), "isbn_-1 dup key"):
+			return "", ErrDuplicateISBN
 		default:
 			return "", err
 		}
@@ -349,12 +339,16 @@ func (b BookModel) Update(ctx context.Context, filter BookFilter, book *Book) er
 		return fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
 	result, err := coll.UpdateOne(ctx, filterQuery, update)
 	if err != nil {
-		return err
+		switch {
+		case strings.Contains(err.Error(), "_id_ dup key:"):
+			return ErrDuplicateID
+		case strings.Contains(err.Error(), "isbn_-1 dup key"):
+			return ErrDuplicateISBN
+		default:
+			return err
+		}
 	}
 
 	if result.MatchedCount == 0 {
@@ -364,7 +358,7 @@ func (b BookModel) Update(ctx context.Context, filter BookFilter, book *Book) er
 	return nil
 }
 
-// Delete deletes a Book from the database by ID.
+// Delete deletes a Book from the database by filter.
 func (b BookModel) Delete(ctx context.Context, filter BookFilter) error {
 	coll := b.Client.Database(b.Database).Collection(b.Collection)
 
@@ -372,9 +366,6 @@ func (b BookModel) Delete(ctx context.Context, filter BookFilter) error {
 	if err != nil {
 		return fmt.Errorf("%v: %v", errCreatingQueryFilter, err)
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	result, err := coll.DeleteOne(ctx, filterQuery)
 	if err != nil {

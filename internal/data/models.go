@@ -3,7 +3,6 @@ package data
 import (
 	"errors"
 	"go.mongodb.org/mongo-driver/mongo"
-	"time"
 )
 
 var (
@@ -12,55 +11,20 @@ var (
 	ErrEditConflict     = errors.New("edit conflict")
 )
 
-var (
-	timeout = 10 * time.Second
-)
-
-const (
-	idTag        = "_id"
-	createdAtTag = "created_at"
-	updatedAtTag = "updated_at"
-)
-
-const (
-	patronIDTag   = "patron_id"
-	bookIDTag     = "book_id"
-	borrowedAtTag = "borrowed_at"
-	dueDateTag    = "due_date"
-	returnedAtTag = "returned_at"
-	statusTag     = "status"
-)
-
-const (
-	pagesTag          = "pages"
-	editionTag        = "edition"
-	publishedAtTag    = "published_at"
-	titleTag          = "title"
-	isbnTag           = "isbn"
-	authorsTag        = "authors"
-	publishersTag     = "publishers"
-	genresTag         = "genres"
-	versionTag        = "version"
-	copiesTag         = "copies"
-	borrowedCopiesTag = "borrowed_copies"
-)
-
-const (
-	nameTag     = "name"
-	emailTag    = "email"
-	categoryTag = "category"
-)
-
 const (
 	BooksCollectionKey        = "books"
 	PatronsCollectionKey      = "patrons"
 	TransactionsCollectionKey = "transactions"
+	TokensCollectionKey       = "tokens"
+	AdminsCollectionKey       = "admins"
 )
 
 type Models struct {
 	Books        BookModel
 	Patrons      PatronModel
 	Transactions TransactionModel
+	Tokens       TokenModel
+	Admins       AdminModel
 }
 
 func NewModels(client *mongo.Client, database string, collections map[string]string) Models {
@@ -68,5 +32,7 @@ func NewModels(client *mongo.Client, database string, collections map[string]str
 		Books:        BookModel{Client: client, Database: database, Collection: collections[BooksCollectionKey]},
 		Patrons:      PatronModel{Client: client, Database: database, Collection: collections[PatronsCollectionKey]},
 		Transactions: TransactionModel{Client: client, Database: database, Collection: collections[TransactionsCollectionKey]},
+		Tokens:       TokenModel{Client: client, Database: database, Collection: collections[TokensCollectionKey]},
+		Admins:       AdminModel{Client: client, Database: database, Collection: collections[AdminsCollectionKey]},
 	}
 }
