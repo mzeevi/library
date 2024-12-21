@@ -41,7 +41,13 @@ docker-push:
 ## run/api: run the cmd/api application
 .PHONY: run/api
 run/api:
-	go run ./cmd/ --db-dsn=${DB_DSN} -jwt-secret=${JWT_SECRET} -admin-username=${ADMIN_USER} -admin-password=${ADMIN_PASSWORD}
+	go run ./cmd/ --db-dsn=${DB_DSN} \
+	              --jwt-secret=${JWT_SECRET} \
+	              --admin-username=${ADMIN_USER} \
+	              --admin-password=${ADMIN_PASSWORD} \
+	              --create-admin=${CREATE_ADMIN} \
+	              --demo-patrons=${DEMO_PATRONS} \
+	              --demo-books=${DEMO_BOOKS}
 
 ## setup-local-mongo: creates a local mongodb
 .PHONY: setup-local-mongo
